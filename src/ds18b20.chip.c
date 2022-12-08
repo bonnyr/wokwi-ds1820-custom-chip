@@ -23,9 +23,13 @@
 #define SIG_TXN_DUR_NS 1000    // assume it takes 1us to stabilise the signal
 #define IN_RANGE(x, y, err) ( (y) > (x) ? (y) - (x) <= err : (x) - (y) <= err)
 
+
 // buffers
 #define BUF_LEN 32
 #define SERIAL_LEN 8
+#define CUR_BIT(chip) ((chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx) != 0)
+
+
 
 // protocol definitions of various durations
 #define PR_DUR_RESET 480
@@ -36,7 +40,9 @@
 #define PR_DUR_PULL_PRESENCE_H 240
 #define PR_DUR_PULL_PRESENCE 120
 #define PR_DUR_SAMPLE_WAIT 15
-#define PR_DUR_READ_SLOT 60
+#define PR_DUR_WRITE_SLOT_END 45
+#define PR_DUR_READ_SLOT 15
+#define PR_DUR_READ_SLOT_END 45
 #define PR_DUR_READ_INIT 1
 
 // allow 2us of jitter 
@@ -71,12 +77,14 @@ typedef enum {
     ST_MASTER_SEARCH_BIT_INIT,
     ST_MASTER_SEARCH_BIT_WAIT_RELEASE,
     ST_MASTER_SEARCH_BIT_SLOT_TIMER,
+    ST_MASTER_SEARCH_BIT_SLOT_END,
     ST_MASTER_SEARCH_INV_BIT_INIT,
     ST_MASTER_SEARCH_INV_BIT_WAIT_RELEASE,
     ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER,
+    ST_MASTER_SEARCH_INV_BIT_SLOT_END,
     ST_MASTER_SEARCH_TX_BIT_INIT,
     ST_MASTER_SEARCH_TX_BIT_WAIT_RELEASE,
-    // ST_MASTER_SEARCH_TX_BIT_SLOT_END,
+    ST_MASTER_SEARCH_TX_BIT_SLOT_END,
 
     ST_MAX
 
@@ -138,6 +146,7 @@ typedef struct {
     sm_handler handler;
 } sm_entry_t;
 
+#define ST_NAME() (sm[chip->state][0].st_name)
 #define SM_E(s, e, h) (sm_entry_t){.name = #h, .st_name = #s, .ev_name = #e, .handler = h}
 
 // ==================== forward decls =========================
@@ -174,14 +183,20 @@ static void on_master_search_bit_init_wait_pin_chg(chip_desc_t *chip, uint32_t d
 static void on_master_search_bit_init_wait_timer_expired(chip_desc_t *chip, uint32_t data);
 static void on_master_search_bit_slot_pin_chg(chip_desc_t *chip, uint32_t data);
 static void on_master_search_bit_slot_timer_expired(chip_desc_t *chip, uint32_t data);
+static void on_master_search_bit_slot_wait_end_pin_chg(chip_desc_t *chip, uint32_t data);
+static void on_master_search_bit_slot_wait_end_timer_expired(chip_desc_t *chip, uint32_t data);
 static void on_master_search_inv_bit_init_pin_chg(chip_desc_t *chip, uint32_t data);
 static void on_master_search_inv_bit_init_wait_pin_chg(chip_desc_t *chip, uint32_t data);
 static void on_master_search_inv_bit_init_wait_timer_expired(chip_desc_t *chip, uint32_t data);
 static void on_master_search_inv_bit_slot_pin_chg(chip_desc_t *chip, uint32_t data);
 static void on_master_search_inv_bit_slot_timer_expired(chip_desc_t *chip, uint32_t data);
+static void on_master_search_inv_bit_slot_wait_end_pin_chg(chip_desc_t *chip, uint32_t data);
+static void on_master_search_inv_bit_slot_wait_end_timer_expired(chip_desc_t *chip, uint32_t data);
 static void on_master_search_tx_bit_init_pin_chg(chip_desc_t *chip, uint32_t data);
 static void on_master_search_tx_bit_wait_pin_chg(chip_desc_t *chip, uint32_t data);
 static void on_master_search_tx_bit_timer_expired(chip_desc_t *chip, uint32_t data);
+static void on_master_search_tx_bit_slot_end_pin_chg(chip_desc_t *chip, uint32_t data);
+static void on_master_search_tx_bit_slot_end_timer_expired(chip_desc_t *chip, uint32_t data);
 
 
 // --- command handlers 
@@ -259,6 +274,10 @@ static sm_entry_t sm[ST_MAX][EV_MAX] = {
     SM_E(ST_MASTER_SEARCH_BIT_SLOT_TIMER, EV_PIN_CHG, on_master_search_bit_slot_pin_chg),
     SM_E(ST_MASTER_SEARCH_BIT_SLOT_TIMER, EV_TIMER_EXPIRED, on_master_search_bit_slot_timer_expired), 
 
+    // ST_MASTER_READ_SLOT_END
+    SM_E(ST_MASTER_SEARCH_BIT_SLOT_END, EV_PIN_CHG, on_master_search_bit_slot_wait_end_pin_chg),
+    SM_E(ST_MASTER_SEARCH_BIT_SLOT_END, EV_TIMER_EXPIRED, on_master_search_bit_slot_wait_end_timer_expired), 
+
     // ST_MASTER_SEARCH_INV_BIT_INIT
     SM_E(ST_MASTER_SEARCH_INV_BIT_INIT, EV_PIN_CHG, on_master_search_inv_bit_init_pin_chg),
     SM_E(ST_MASTER_SEARCH_INV_BIT_INIT, EV_TIMER_EXPIRED, on_not_impl),
@@ -271,6 +290,10 @@ static sm_entry_t sm[ST_MAX][EV_MAX] = {
     SM_E(ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER, EV_PIN_CHG, on_master_search_inv_bit_slot_pin_chg),
     SM_E(ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER, EV_TIMER_EXPIRED, on_master_search_inv_bit_slot_timer_expired), 
 
+    // ST_MASTER_SEARCH_INV_BIT_SLOT_END
+    SM_E(ST_MASTER_SEARCH_INV_BIT_SLOT_END, EV_PIN_CHG, on_master_search_inv_bit_slot_wait_end_pin_chg),
+    SM_E(ST_MASTER_SEARCH_INV_BIT_SLOT_END, EV_TIMER_EXPIRED, on_master_search_inv_bit_slot_wait_end_timer_expired), 
+
     // ST_MASTER_SEARCH_BIT_INIT
     SM_E(ST_MASTER_SEARCH_TX_BIT_INIT, EV_PIN_CHG, on_master_search_tx_bit_init_pin_chg),
     SM_E(ST_MASTER_SEARCH_TX_BIT_INIT, EV_TIMER_EXPIRED, on_not_impl),
@@ -280,8 +303,8 @@ static sm_entry_t sm[ST_MAX][EV_MAX] = {
     SM_E(ST_MASTER_SEARCH_TX_BIT_WAIT_RELEASE, EV_TIMER_EXPIRED, on_master_search_tx_bit_timer_expired), 
 
     // // ST_MASTER_READ_SLOT_END
-    // SM_E(ST_MASTER_SEARCH_TX_BIT_WAIT_END, EV_PIN_CHG, on_master_search_tx_bit),
-    // SM_E(ST_MASTER_SEARCH_TX_BIT_SLOT_END, EV_TIMER_EXPIRED, on_master_search_tx_bit_slot_timer_expired), 
+    SM_E(ST_MASTER_SEARCH_TX_BIT_SLOT_END, EV_PIN_CHG, on_master_search_tx_bit_slot_end_pin_chg),
+    SM_E(ST_MASTER_SEARCH_TX_BIT_SLOT_END, EV_TIMER_EXPIRED, on_master_search_tx_bit_slot_end_timer_expired), 
 
 
 };
@@ -323,12 +346,30 @@ void chip_init()
     attr = attr_init("presence_time", PR_DUR_PULL_PRESENCE); 
     chip->presence_time = attr_read(attr);
 
+    
+    // attr = attr_init("device_id", "9F9D876799C4F707"); 
+    const char *dev_id_str = "9F9D876799C4F707";//= attr_read(attr);
+    uint64_t tmp = strtoull(dev_id_str, NULL, 16);
+    printf("serial: %llx\n", tmp);
+
+    // this is a hack. just until I can get string attributes...
+    *(uint64_t *)chip->serial_no = tmp;
+    for (int i = 0; i < 4; i++ ){
+        uint8_t tmp = chip->serial_no[i];
+        chip->serial_no[i] = chip->serial_no[7-i];
+        chip->serial_no[7-i] = tmp;
+    }
+    for (int i = 0; i < 8; i++ ){
+        printf("%02x", chip->serial_no[i]);
+    }
+    printf("\n");
+
     reset_state(chip);
     printf("DS18B20 chip initialised\n");
 }
 
 static void reset_state(chip_desc_t *chip) {
-    DEBUGF("resetting state from %d\n", chip->state);
+    DEBUGF("resetting state from %s\n", ST_NAME());
     chip->state = ST_INIT;
     chip->reset_time = 0;
     chip->reset_timer_expired = false;
@@ -345,7 +386,7 @@ static void reset_state(chip_desc_t *chip) {
 static void push_sm_event(chip_desc_t *chip, ev_t ev, uint32_t ev_data) {
     sm_entry_t h = sm[chip->state][ev];
 
-    DEBUGF("%s[%s]: %s\n", h.st_name, h.ev_name, h.name);
+    DEBUGF("%08lld %s[%s]: %s( %d )\n", get_sim_nanos(), h.st_name, h.ev_name, h.name, ev_data);
     if (h.handler == NULL) {
         DEBUGF("SM error: unhandled event %d in state %d, resetting\n", ev, chip->state);
         reset_state(chip);
@@ -358,7 +399,6 @@ static void push_sm_event(chip_desc_t *chip, ev_t ev, uint32_t ev_data) {
 }
 // ==================== API handlers =========================
 static void on_timer_event(void *data) {
-    printf("%08lld: on_timer_event\n", get_sim_nanos());
     push_sm_event((chip_desc_t*)data, EV_TIMER_EXPIRED, 0);
 }
 
@@ -369,7 +409,6 @@ static void on_reset_timer_event(void *data) {
 
 static void on_pin_change(void *data, pin_t pin, uint32_t value) {
   chip_desc_t *chip = (chip_desc_t*)data;
-    DEBUGF("%08lld: on_pin_chg event in state %s: %d\n", get_sim_nanos(), sm[chip->state][0].st_name, value);
 
   if (pin != chip->pin) {
     DEBUGF("called back on wrong pin\n");
@@ -556,7 +595,7 @@ static void on_master_read_init_pin_chg(chip_desc_t *chip, uint32_t data) {
 
 
 static void write_next_bit(chip_desc_t *chip) {
-    chip->cur_bit = chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx;  
+    chip->cur_bit = CUR_BIT(chip) ; // chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx;  
     chip->bit_ndx++;
     if (chip->bit_ndx >= 8) {
         chip->bit_ndx = 0;
@@ -622,6 +661,8 @@ static void on_master_read_slot_timer_expired(chip_desc_t *chip, uint32_t data) 
 // ---- search
 static void write_bit(chip_desc_t *chip, bool bit, ow_state_t state) {
 
+    DEBUGF("write_bit in %s: %d\n", ST_NAME(), bit);
+
     if (!bit) {
         pin_mode(chip->pin, OUTPUT_LOW);
     }
@@ -664,16 +705,26 @@ static void on_read_state_init_wait_pin_chg(chip_desc_t *chip, uint32_t data, bo
 
 
 
-static void on_read_state_slot_pin_chg(chip_desc_t *chip, uint32_t data, bool bit) {
+static void on_read_slot_pin_chg(chip_desc_t *chip, uint32_t data, bool bit) {
     // todo(bonnyr): this needs to be confirmed as unexpected
-    if (data == HIGH && !bit || data == LOW && bit) {
-        DEBUGF("L->H or H->L transition unexpected while waiting for READ slot timer, resetting");
-        reset_state(chip);
-        return;
-    }  
+        DEBUGF("ignoring expected L->H transition\n");
+    // if (data == HIGH && !bit || data == LOW && bit) {
+    //     DEBUGF("L->H or H->L transition unexpected while waiting for READ slot timer, resetting");
+    //     reset_state(chip);
+    //     return;
+    // }  
 }
 
-static void on_read_state_slot_timer_expired(chip_desc_t *chip, ow_state_t state) {
+static void on_read_slot_timer_expired(chip_desc_t *chip, bool bit, ow_state_t state) {
+
+    // if we pulled the bus low, release it
+    if (!bit) {
+        DEBUGF("on_read_slot_timer_expired: pulling bit up\n");
+        // this call caused the sim engine to call us back within the same call stack
+        // hence we do not need to wait for the slot end, just assume next cycle starts by master
+        pin_mode(chip->pin, INPUT_PULLUP);
+        DEBUGF("on_read_slot_timer_expired: pulling bit up - done\n");
+    }
 
     // check if we finished writing to master. This happens only when we
     // finish writing at least a byte worth of stuff
@@ -682,10 +733,20 @@ static void on_read_state_slot_timer_expired(chip_desc_t *chip, ow_state_t state
         return;
     }
 
-    // go back for more
+    timer_start(chip->timer, PR_DUR_READ_SLOT_END, false);
     chip->state = state;
 }
 
+
+
+static void on_read_slot_wait_end_pin_chg(chip_desc_t *chip) {
+    DEBUGF("ignoring expected L->H transition");
+}
+
+static void on_read_slot_wait_end_timer_expired(chip_desc_t *chip, ow_state_t state) {
+    // transition to next state
+    chip->state = state;
+}
 
 
 static void on_write_state_init_pin_chg(chip_desc_t *chip, uint32_t data, ow_state_t state) {
@@ -747,20 +808,44 @@ static void on_master_search_bit_init_pin_chg(chip_desc_t *chip, uint32_t data) 
 
 // this should not happen, but just in case, write the bit anyway
 static void on_master_search_bit_init_wait_pin_chg(chip_desc_t *chip, uint32_t data) {
-    on_read_state_init_wait_pin_chg(chip, data, chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx, ST_MASTER_SEARCH_BIT_SLOT_TIMER);
+    on_read_state_init_wait_pin_chg(chip, data, CUR_BIT(chip), ST_MASTER_SEARCH_BIT_SLOT_TIMER);
 }
 
 static void on_master_search_bit_init_wait_timer_expired(chip_desc_t *chip, uint32_t data) {
-    write_bit(chip, chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx, ST_MASTER_SEARCH_BIT_SLOT_TIMER);
+    write_bit(chip, CUR_BIT(chip), ST_MASTER_SEARCH_BIT_SLOT_TIMER);
 }
 
 static void on_master_search_bit_slot_pin_chg(chip_desc_t *chip, uint32_t data) {
-    on_read_state_slot_pin_chg(chip, chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx, ST_MASTER_SEARCH_INV_BIT_INIT);
+    on_read_slot_pin_chg(chip, data, CUR_BIT(chip));
 }
 
 static void on_master_search_bit_slot_timer_expired(chip_desc_t *chip, uint32_t data) {
-    on_read_state_slot_timer_expired(chip, ST_MASTER_SEARCH_INV_BIT_INIT);
+    on_read_slot_timer_expired(chip, CUR_BIT(chip), ST_MASTER_SEARCH_BIT_SLOT_END);
 }
+
+
+// these may not be needed for now due to re-entrant behavior of pin_mode in previous state
+static void on_master_search_bit_slot_wait_end_pin_chg(chip_desc_t *chip, uint32_t data) {
+    // should be ignored
+    on_read_slot_wait_end_pin_chg(chip);
+}
+
+static void on_master_search_bit_slot_wait_end_timer_expired(chip_desc_t *chip, uint32_t data) {
+    on_read_slot_wait_end_timer_expired(chip, ST_MASTER_SEARCH_INV_BIT_INIT);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 static void on_master_search_inv_bit_init_pin_chg(chip_desc_t *chip, uint32_t data) {
@@ -769,20 +854,33 @@ static void on_master_search_inv_bit_init_pin_chg(chip_desc_t *chip, uint32_t da
 
 // this should not happen, but just in case, write the bit anyway
 static void on_master_search_inv_bit_init_wait_pin_chg(chip_desc_t *chip, uint32_t data) {
-    on_read_state_init_wait_pin_chg(chip, data, !(chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx), ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER);
+    on_read_state_init_wait_pin_chg(chip, data, !(CUR_BIT(chip)), ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER);
 }
 
 static void on_master_search_inv_bit_init_wait_timer_expired(chip_desc_t *chip, uint32_t data) {
-    write_bit(chip, !(chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx), ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER);
+    write_bit(chip, !(CUR_BIT(chip)), ST_MASTER_SEARCH_INV_BIT_SLOT_TIMER);
 }
 
 static void on_master_search_inv_bit_slot_pin_chg(chip_desc_t *chip, uint32_t data) {
-    on_read_state_slot_pin_chg(chip, !(chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx), ST_MASTER_SEARCH_TX_BIT_INIT);
+    on_read_slot_pin_chg(chip, data, !(CUR_BIT(chip)));
 }
 
 static void on_master_search_inv_bit_slot_timer_expired(chip_desc_t *chip, uint32_t data) {
-    on_read_state_slot_timer_expired(chip, ST_MASTER_SEARCH_TX_BIT_INIT);
+    on_read_slot_timer_expired(chip, !CUR_BIT(chip), ST_MASTER_SEARCH_INV_BIT_SLOT_END);
 }
+
+static void on_master_search_inv_bit_slot_wait_end_pin_chg(chip_desc_t *chip, uint32_t data) {
+    on_read_slot_wait_end_pin_chg(chip);
+}
+
+static void on_master_search_inv_bit_slot_wait_end_timer_expired(chip_desc_t *chip, uint32_t data) {
+    on_read_slot_wait_end_timer_expired(chip, ST_MASTER_SEARCH_TX_BIT_INIT);
+}
+
+
+
+
+
 
 
 static void on_master_search_tx_bit_init_pin_chg(chip_desc_t *chip, uint32_t data) {
@@ -791,25 +889,62 @@ static void on_master_search_tx_bit_init_pin_chg(chip_desc_t *chip, uint32_t dat
 
 // this should not happen, but just in case, write the bit anyway
 static void on_master_search_tx_bit_wait_pin_chg(chip_desc_t *chip, uint32_t data) {
-    on_write_state_pin_chg(chip, data);
+    DEBUGF("on_master_search_tx_bit_wait_pin_chg: ignoring\n")
+    // on_write_state_pin_chg(chip, data);
 }
 
 static void on_master_search_tx_bit_timer_expired(chip_desc_t *chip, uint32_t data) {
-    bool bit = on_write_state_timer_expired(chip, ST_MASTER_SEARCH_BIT_INIT );
+    bool bit = pin_read(chip->pin);
 
+
+    DEBUGF("on_master_search_tx_bit_timer_expired: comparing bit %d - m:%d, s:%d\n", chip->byte_ndx * 8 + chip->bit_ndx, bit, CUR_BIT(chip))
     // if master transmitted bit does not match ours, reset
-    if (bit != chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx) {
+    if (bit != CUR_BIT(chip))  {
         reset_state(chip);
         return;
     }
+
+
     chip->bit_ndx++;
     if (chip->bit_ndx >= 8) {
         chip->bit_ndx = 0;
         chip->byte_ndx++;
     }
+
+    // if we sampled '1', we do not need to wait before going to next bit, so change state here
+    if (bit) {
+        DEBUGF("on_master_search_tx_bit_timer_expired: bus transmitted '1', moving to next state\n");
+        if (chip->byte_ndx == SERIAL_LEN) {
+            DEBUGF("on_master_search_tx_bit_timer_expired: *** finished search, going back to init\n");
+            reset_state(chip);
+        } else {
+            chip->state = ST_MASTER_SEARCH_BIT_INIT;
+        }
+        return;
+    } 
+    
+    // we need to wait for the master to release the bus
+    chip->state = ST_MASTER_SEARCH_TX_BIT_SLOT_END;
+
+    // todo(bonnyr): consider setting a protection timer
+    // timer_start(chip->timer, PR_DUR_WRITE_SLOT_END, false);
+
+    
+}
+
+static void on_master_search_tx_bit_slot_end_pin_chg(chip_desc_t *chip, uint32_t data) {
     if (chip->byte_ndx == SERIAL_LEN) {
+        DEBUGF("on_master_search_tx_bit_slot_end_pin_chg: *** finished search, going back to init\n");
         reset_state(chip);
+        return;
     }
+    chip->state = ST_MASTER_SEARCH_BIT_INIT;
+    // DEBUGF("on_master_search_tx_bit_wait_pin_chg: ignoring\n")
+}
+
+static void on_master_search_tx_bit_slot_end_timer_expired(chip_desc_t *chip, uint32_t data) {
+    DEBUGF("on_master_search_tx_bit_slot_end_timer_expired: should not happen \n")
+    // chip->state = ST_MASTER_SEARCH_BIT_INIT;
 }
 
 
