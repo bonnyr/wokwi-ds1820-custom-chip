@@ -1,0 +1,24 @@
+name: Build DS18b20 Custom Chip
+
+on:
+  push:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build chip
+      uses: wokwi/wokwi-chip-clang-action@main
+      run: make all
+    - name: 'Upload Artifacts'
+      uses: actions/upload-artifact@v3
+      with:
+        name: chip
+        path: |
+          dist/chip.json
+          dist/chip.wasm
+
