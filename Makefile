@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # src/wokwi-api.c 
-SOURCES = src/ow_signaling_sm.c src/ow_byte_sm.c src/hashmap.c src/ds18b20-2.chip.c 
+SOURCES = src/ow_signaling_sm.c src/ow_byte_sm.c src/hashmap.c src/ds18b20.chip.c 
 TARGET  = dist/chip.wasm
 INCLUDE = -I . -I include
 
@@ -19,6 +19,6 @@ dist:
 $(TARGET): dist $(SOURCES) # src/wokwi-api.h
 	  clang --target=wasm32-unknown-wasi --sysroot /opt/wasi-libc -nostartfiles -Wl,--import-memory -Wl,--export-table -Wl,--no-entry -Werror  $(INCLUDE) -o $(TARGET) $(SOURCES)
 
-dist/chip.json: dist chip.json
+dist/chip.json: dist
 	  cp src/ds18b20.chip.json dist/chip.json
 

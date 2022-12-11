@@ -966,7 +966,7 @@ static void on_ds_recall(chip_desc_t *chip) {
     chip->cmd_ctx.cmd_sm = sm_wr_bit;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    chip->cur_bit = HIGH;       // only write 1 bit of '1'
+    chip->buffer[0] = 0x01; // only write 1 bit of '1'
 
     ds_func_cmd_prime_next_bit(chip);
     DEBUGF("on_ds_recall started\n");
@@ -980,7 +980,7 @@ static void on_ds_read_power(chip_desc_t *chip) {
     chip->cmd_ctx.cmd_sm = sm_wr_bit;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    chip->cur_bit = HIGH;       // indicate we're running on parasite power
+    chip->buffer[0] = 0x01; // indicate we're running on parasite power
 
     ds_func_cmd_prime_next_bit(chip);
     DEBUGF("on_ds_read_power\n");
