@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: © 2022 Bonny Rais <bonnyr@gmail.com>
 # SPDX-License-Identifier: MIT
 
-# src/wokwi-api.c 
 SOURCES = src/ow_signaling_sm.c src/ow_byte_sm.c src/hashmap.c src/ds18b20.chip.c 
+INCLUDES = -I . -I include
+CHIP_JSON = src/ds18b20.chip.json
+
+TARBALL  = dist/chip.tar.gz
 TARGET  = dist/chip.wasm
-INCLUDE = -I . -I include
 
 .PHONY: all
-all: $(TARGET) dist/chip.json
+all: clean $(TARBALL)
 
 .PHONY: clean
 clean:
@@ -16,9 +18,12 @@ clean:
 dist:
 		mkdir -p dist
 
-$(TARGET): dist $(SOURCES) # src/wokwi-api.h
-	  clang --target=wasm32-unknown-wasi --sysroot /opt/wasi-libc -nostartfiles -Wl,--import-memory -Wl,--export-table -Wl,--no-entry -Werror  $(INCLUDE) -o $(TARGET) $(SOURCES)
+$(TARBALL): $(TARGET) dist/chip.json
+	ls -l dist
+	tar czf $(TARBALL) $(TARGET) dist/chip.json
 
-dist/chip.json: dist
-	  cp src/ds18b20.chip.json dist/chip.json
+dist/chip.json:
+	cp $(CHIP_JSON) dist/chip.json
 
+$(TARGET): dist $(SOURCES)
+	  clang --target=wasm32-unknown-wasi --sysroot /opt/wasi-libc -nostartfiles -Wl,--import-memory -Wl,--export-table -Wl,--no-entry -Werror  $(INCLUDES) -o $(TARGET) $(SOURCES)
