@@ -5,7 +5,6 @@
 #ifndef WOKWI_DS1820_CUSTOM_CHIP_OW_H
 #define WOKWI_DS1820_CUSTOM_CHIP_OW_H
 
-#include "wokwi-api.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,6 +161,7 @@ typedef void (*reset_state)(void *ctx);
 typedef struct ow_ctx {
     uint32_t state;     // since we're using enums, this can be stored as uint32_t. Allows using for multiple SM types
     timer_t timer;
+    timer_t reset_detection_timer;
     pin_t pin;
     bool bit_buf;
 
@@ -258,10 +258,12 @@ void ow_ctx_reset_state(ow_ctx_t *ctx);
 void ow_ctx_set_master_write_state(ow_ctx_t *ctx, bool bit);
 void ow_ctx_set_master_read_state(ow_ctx_t *ctx, bool bit);
 
+void on_not_impl(void *chip, uint32_t data);
+
 ow_byte_ctx_t *ow_read_byte_ctx_init(void *data, byte_cb cb, ow_ctx_t *ow_ctx);
 ow_byte_ctx_t *ow_write_byte_ctx_init(void *data, byte_cb cb, ow_ctx_t *ow_ctx);
 void ow_read_byte_ctx_reset_state(ow_byte_ctx_t *ctx);
-void ow_byte_ctx_write_reset_state(ow_byte_ctx_t *ctx);
+void ow_write_byte_ctx_reset_state(ow_byte_ctx_t *ctx, uint8_t byte_buf);
 
 
 
