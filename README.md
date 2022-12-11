@@ -30,22 +30,20 @@ Write only. Resets the chip to power on.
 
 ### Search
 The device responds to the search command.
-
-[TBD]
 ### Read
-The device replies with its serial no bytes
+The device replies with its serial no bytes.
 
 ### Match
-The device performs a match to the address sent by the master
+The device performs a match to the address sent by the master.
 
 ### Skip
-The device skips to wait for function command
+The device skips to wait for function command.
 
 ### Alarm Search
-TBD: not implemented yet
+TBD: not implemented yet.
 
 ### Convert
-The device stores the temperature that is configured through `diagram.json` into the scratch pad
+The device stores the temperature that is configured through `diagram.json` into the scratch pad.
 
 ### Write Scratchpad
 The device writes the Th, Tl and Cfg bytes into the scratch pad.
