@@ -1,5 +1,8 @@
 {
-    "files.associations": {
-        "ds": "cpp"
-    }
+    "arduino.path": "W:\\Program Files\\Arduino IDE",
+    "workbench.colorTheme": "Solarized Dark",
+    "workbench.preferredDarkColorTheme": "Solarized Dark",
+    "workbench.preferredHighContrastColorTheme": "Solarized Dark",
+    "window.autoDetectColorScheme": true,
+    "workbench.iconTheme": "vs-seti"
 }

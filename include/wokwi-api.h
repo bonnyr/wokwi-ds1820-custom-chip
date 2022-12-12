@@ -1,9 +1,9 @@
-//
-// Created by bonny on 5/12/2022.
-//
+// //
+// // Created by bonny on 5/12/2022.
+// //
 
-#ifndef WOKWI_DS1820_CUSTOM_CHIP_WOKWI_API_H
-#define WOKWI_DS1820_CUSTOM_CHIP_WOKWI_API_H
+// #ifndef WOKWI_DS1820_CUSTOM_CHIP_WOKWI_API_H
+// #define WOKWI_DS1820_CUSTOM_CHIP_WOKWI_API_H
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -32,7 +32,10 @@ enum edge {
     BOTH = 3,
 };
 
-int __attribute__((export_name("__wokwi_api_version_1"))) __wokwi_api_version_1(void) { return 1; }
+// #ifndef WOKWI_API_VERSION
+// #define WOKWI_API_VERSION
+int __attribute__((export_name("__wokwi_api_version_1"))) __attribute__((weak)) __wokwi_api_version_1(void) { return 1; }
+// #endif 
 
 #ifdef __cplusplus
 extern "C" {
@@ -142,4 +145,4 @@ extern __attribute__((import_name("bufferWrite"))) void buffer_write(buffer_t bu
 #endif
 
 #endif /* WOKWI_API_H */
-#endif //WOKWI_DS1820_CUSTOM_CHIP_WOKWI_API_H
+// #endif //WOKWI_DS1820_CUSTOM_CHIP_WOKWI_API_H
