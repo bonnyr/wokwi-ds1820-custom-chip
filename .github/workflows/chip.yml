@@ -5,15 +5,11 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
-
     - name: Build chip
-      uses: wokwi/wokwi-chip-clang-action@main
-      run: make all
+      uses: bonnyr/wokwi-chip-clang-action@main
     - name: 'Upload Artifacts'
       uses: actions/upload-artifact@v3
       with:
