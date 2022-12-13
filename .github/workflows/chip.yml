@@ -2,6 +2,7 @@ name: Build DS18b20 Custom Chip
 
 on:
   push:
+  workflow_dispatch:
 
 jobs:
   build:
