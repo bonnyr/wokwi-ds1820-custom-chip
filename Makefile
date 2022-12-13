@@ -3,25 +3,27 @@
 
 SOURCES = src/ow_signaling_sm.c src/ow_byte_sm.c src/hashmap.c src/ds18b20.chip.c 
 INCLUDES = -I . -I include
-CHIP_JSON = ds18b20.chip.json
+CHIP_JSON = src/ds18b20.chip.json
 
 TARBALL  = dist/chip.tar.gz
 TARGET  = dist/chip.wasm
 
 .PHONY: all
-all: clean $(TARGET)
+all: clean $(TARBALL)
 
 .PHONY: clean
 clean:
 		rm -rf dist
+
 dist:
 		mkdir -p dist
 
-$(TARBALL): $(TARGET) dist/$(CHIP_JSON)
-	tar xzf $(TARBALL) $(TARGET) dist/chip.json
+$(TARBALL): $(TARGET) dist/chip.json
+	ls -l dist
+	tar czf $(TARBALL) $(TARGET) dist/chip.json
 
-dist/$(CHIP_JSON):
-	cp $(CHIP_JSON) dist
+dist/chip.json:
+	cp $(CHIP_JSON) dist/chip.json
 
-$(LIB): dist $(SOURCES)
-	  clang --target=wasm32-unknown-wasi --sysroot /opt/wasi-libc -nostartfiles -Wl,--import-memory -Wl,--export-table -Wl,--no-entry -Werror  $(INCLUDES) -o $(LIB) $(SOURCES)
+$(TARGET): dist $(SOURCES)
+	  clang --target=wasm32-unknown-wasi --sysroot /opt/wasi-libc -nostartfiles -Wl,--import-memory -Wl,--export-table -Wl,--no-entry -Werror  $(INCLUDES) -o $(TARGET) $(SOURCES)
