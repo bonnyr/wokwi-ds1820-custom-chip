@@ -16,6 +16,7 @@ jobs:
       with:
         name: chip
         path: |
+          dist/chip.tar.gz
           dist/chip.json
           dist/chip.wasm
 
