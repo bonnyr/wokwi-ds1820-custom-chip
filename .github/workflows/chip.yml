@@ -17,8 +17,8 @@ jobs:
         name: chip
         path: |
           dist/chip.tar.gz
-          dist/chip.json
-          dist/chip.wasm
+          # dist/chip.json
+          # dist/chip.wasm
 
   release:
     name: Release
@@ -31,6 +31,10 @@ jobs:
         with:
           name: chip
           path: chip
+      - name: copy release
+        run: cd chip && cp chip.tar.gz ..
+        env:
+          ZIP_VERSION: ${{ github.ref_name }}
       - name: Upload release
         uses: ncipollo/release-action@v1
         with:
