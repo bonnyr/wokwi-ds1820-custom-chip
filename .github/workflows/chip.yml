@@ -37,6 +37,6 @@ jobs:
       - name: Upload release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: chip.tar.gz
+          artifacts: chip.zip
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
