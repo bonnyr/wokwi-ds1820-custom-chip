@@ -31,13 +31,9 @@ jobs:
         with:
           name: chip
           path: chip
-      - name: Create a zip archive
-        run: cd chip && zip -9 ../chip.zip chip.*
-        env:
-          ZIP_VERSION: ${{ github.ref_name }}
       - name: Upload release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: chip.zip
+          artifacts: chip.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: true
