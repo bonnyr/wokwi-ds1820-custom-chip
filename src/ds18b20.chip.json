@@ -1,6 +1,7 @@
 {
     "name": "Dallas DS18B20",
     "author": "Bonny Rais",
+    "docs": "https://github.com/bonnyr/wokwi-ds1820-custom-chip/blob/main/README.md",
     "pins": [
       "DQ",
       "GND",
