@@ -21,14 +21,14 @@
 
 OneWire  ds(10);  // on pin 10
 
-void setup(void) {
+void test_one_wire_lib_setup(void) {
   Serial.begin(115200);
   pinMode(2, OUTPUT);
   pinMode(3, OUTPUT);
   digitalWrite(2, HIGH);
 }
 
-void loop(void) {
+void test_one_wire_lib_loop(void) {
   static bool cycle;
   // static int cnt;
   // byte i;

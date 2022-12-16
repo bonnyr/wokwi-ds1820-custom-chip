@@ -14,6 +14,9 @@ static void on_reset_timer_event(void *ctx);
 static void on_timer_event(void *data);
 static void on_pin_change(void *user_data, pin_t pin, uint32_t value);
 
+static void on_ignored(void *ctx, uint32_t data);
+static void on_reset_detected(void *ctx, uint32_t data);
+
 static void on_reset_init_pin_chg(void *ctx, uint32_t data);
 static void on_reset_wait_release_pin_chg(void *ctx, uint32_t data);
 static void on_reset_wait_release_timer_expired(void *ctx, uint32_t data);
@@ -42,56 +45,67 @@ sm_entry_t sm_sig_entries[] = { //[ST_RESET_MAX][EV_MAX]
         // ST_INIT
         SM_E(ST_RESET_INIT, EV_PIN_CHG, on_reset_init_pin_chg),
         SM_E(ST_RESET_INIT, EV_TIMER_EXPIRED, on_not_impl),
-
-
+        SM_E(ST_RESET_INIT, EV_RESET_TIMER_EXPIRED, on_ignored),
 
         // ST_RESET_WAIT_RELEASE,
         SM_E(ST_RESET_WAIT_RELEASE, EV_PIN_CHG, on_reset_wait_release_pin_chg),
         SM_E(ST_RESET_WAIT_RELEASE, EV_TIMER_EXPIRED, on_reset_wait_release_timer_expired),
+        SM_E(ST_RESET_WAIT_RELEASE, EV_RESET_TIMER_EXPIRED, on_ignored),
 
         // ST_RESET_WAIT_PRESENCE
         SM_E(ST_RESET_WAIT_PRESENCE, EV_PIN_CHG, on_reset_wait_presence_pin_chg),
         SM_E(ST_RESET_WAIT_PRESENCE, EV_TIMER_EXPIRED, on_reset_wait_presence_timer_expired),
+        SM_E(ST_RESET_WAIT_PRESENCE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_RESET_PULL_PRESENCE
         SM_E(ST_RESET_PULL_PRESENCE, EV_PIN_CHG, on_reset_pull_presence_pin_chg),
         SM_E(ST_RESET_PULL_PRESENCE, EV_TIMER_EXPIRED, on_reset_pull_presence_timer_expired),
+        SM_E(ST_RESET_PULL_PRESENCE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_RESET_DONE
         SM_E(ST_RESET_DONE, EV_PIN_CHG, on_reset_done_pin_chg),
         SM_E(ST_RESET_DONE, EV_TIMER_EXPIRED, on_reset_done_timer_expired),
+        SM_E(ST_RESET_DONE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_WRITE_INIT
         SM_E(ST_MASTER_WRITE_INIT, EV_PIN_CHG, on_master_write_init_pin_chg),
         SM_E(ST_MASTER_WRITE_INIT, EV_TIMER_EXPIRED, on_not_impl),
+        SM_E(ST_MASTER_WRITE_INIT, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_WRITE_WAIT_RELEASE
         SM_E(ST_MASTER_WRITE_WAIT_SAMPLE, EV_PIN_CHG, on_master_write_wait_sample_pin_chg),
         SM_E(ST_MASTER_WRITE_WAIT_SAMPLE, EV_TIMER_EXPIRED, on_master_write_wait_sample_timer_expired),
+        SM_E(ST_MASTER_WRITE_WAIT_SAMPLE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_WRITE_SLOT_END
         SM_E(ST_MASTER_WRITE_SLOT_END, EV_PIN_CHG, on_master_write_wait_slot_end_pin_chg),
         SM_E(ST_MASTER_WRITE_SLOT_END, EV_TIMER_EXPIRED, on_master_write_wait_slot_end_timer_expired),
+        SM_E(ST_MASTER_WRITE_SLOT_END, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_WRITE_DONE
         SM_E(ST_MASTER_WRITE_DONE, EV_PIN_CHG, on_master_write_done_pin_chg),
         SM_E(ST_MASTER_WRITE_DONE, EV_TIMER_EXPIRED, on_not_impl),
+        SM_E(ST_MASTER_WRITE_DONE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_READ_INIT
         SM_E(ST_MASTER_READ_INIT, EV_PIN_CHG, on_master_read_init_pin_chg),
         SM_E(ST_MASTER_READ_INIT, EV_TIMER_EXPIRED, on_not_impl),
+        SM_E(ST_MASTER_READ_INIT, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_READ_INIT_WAIT_RELEASE
         SM_E(ST_MASTER_READ_WAIT_SAMPLE, EV_PIN_CHG, on_master_read_wait_sample_pin_chg),
         SM_E(ST_MASTER_READ_WAIT_SAMPLE, EV_TIMER_EXPIRED, on_master_read_wait_sample_timer_expired),
+        SM_E(ST_MASTER_READ_WAIT_SAMPLE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_READ_SLOT_TIMER
         SM_E(ST_MASTER_READ_SLOT_END, EV_PIN_CHG, on_master_read_slot_end_pin_chg),
         SM_E(ST_MASTER_READ_SLOT_END, EV_TIMER_EXPIRED, on_master_read_slot_end_timer_expired),
+        SM_E(ST_MASTER_READ_SLOT_END, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
         // ST_MASTER_READ_DONE
         SM_E(ST_MASTER_READ_DONE, EV_PIN_CHG, on_master_read_done_pin_chg),
         SM_E(ST_MASTER_READ_DONE, EV_TIMER_EXPIRED, on_not_impl),
+        SM_E(ST_MASTER_READ_DONE, EV_RESET_TIMER_EXPIRED, on_reset_detected),
 
 };
 
@@ -180,11 +194,13 @@ static void on_timer_event(void *data) {
 
 static void on_reset_timer_event(void *data) {
     OW_CTX(data);
+    OW_DEBUGF("%08lld on_reset_timer_event: %d\n", get_sim_nanos(), ctx->reset_detection_timer);
+
 
     // if the timer expired, last pin change was pulled low meaning there 
     // was no other bus event and the master decided to reset us
     // for now, record this and allow sm to handle this fact
-    ctx->reset_timer_expired = true;
+    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_RESET_TIMER_EXPIRED, 0, ctx->ow_debug);
 }
 
 static void on_pin_change(void *data, pin_t pin, uint32_t value) {
@@ -196,20 +212,36 @@ static void on_pin_change(void *data, pin_t pin, uint32_t value) {
     }
 
     ctx->reset_timer_expired = false;
-    if (value == HIGH) {
-        timer_stop(ctx->reset_detection_timer);
-    } else {
-        timer_start(ctx->reset_detection_timer, 480, false);
+    timer_stop(ctx->reset_detection_timer);
+    if (value == LOW) {
+    //     timer_stop(ctx->reset_detection_timer);
+    // } else {
+        OW_DEBUGF("%08lld on_pin_change, starting reset detection timer\n", get_sim_nanos());
+        timer_start(ctx->reset_detection_timer, PR_DUR_FORCED_RESET, false);
     }
 
-    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_PIN_CHG, value,
-                  ctx->ow_debug);
+    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_PIN_CHG, value, ctx->ow_debug);
 }
 
-void on_not_impl(void *chip, uint32_t data) {
+void on_not_impl(void *ctx, uint32_t data) {
     printf("not implemented\n");
 }
 
+void on_ignored(void *ctx, uint32_t data) {
+    printf("on_ignored\n");
+}
+
+static void on_reset_detected(void *d, uint32_t data) {
+    OW_CTX(d);
+    OW_DEBUGF("%08lld on_reset_detected: %d\n", get_sim_nanos(), ctx->reset_detection_timer);
+
+
+    // reset our and owner's context and then set the state as if we're waiting for the reset 
+    // pin change from LOW to HIGH. The normal timer is not started.
+    ctx->forced_reset_callback(ctx->user_data, OW_ERR_NO_ERROR, 0);
+    ow_ctx_reset_state(ctx);
+    ctx->state = ST_RESET_WAIT_RELEASE;
+}
 
 // ==================== Implementation =========================
 static void ow_ctx_reset_cb(void *ctx) { ow_ctx_reset_state((ow_ctx_t *)ctx);}
@@ -217,6 +249,7 @@ ow_ctx_t * ow_ctx_init(ow_ctx_cfg_t *cfg)  {
     ow_ctx_t *ctx = calloc(1, sizeof(ow_ctx_t));
     ctx->user_data = cfg->data;
     ctx->reset_callback = cfg->reset_cb;
+    ctx->forced_reset_callback = cfg->forced_reset_cb;
     ctx->bit_read_callback = cfg->bit_read_cb;
     ctx->bit_written_callback = cfg->bit_written_cb;
 
@@ -254,6 +287,7 @@ ow_ctx_t * ow_ctx_init(ow_ctx_cfg_t *cfg)  {
 
 
     ow_ctx_reset_state(ctx);
+    OW_DEBUGF("%08lld ow_ctx_init\n", get_sim_nanos());
 
     return ctx;
 }
@@ -271,6 +305,7 @@ void ow_ctx_reset_state(ow_ctx_t *ctx) {
     pin_mode(ctx->pin, INPUT_PULLUP);
 
     timer_stop(ctx->timer);
+    timer_stop(ctx->reset_detection_timer);
 }
 
 void ow_ctx_set_master_write_state(ow_ctx_t *ctx, bool bit) {
@@ -305,7 +340,7 @@ static void on_reset_wait_release_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
     // unexpected transition, ignore
     if (data == LOW) {
-        OW_DEBUGF("H->L transition unexpected while waiting for reset release, ignoring");
+        OW_DEBUGF("H->L transition unexpected while waiting for reset release, ignoring\n");
         return;
     }
 
@@ -326,6 +361,7 @@ static void on_reset_wait_release_pin_chg(void *d, uint32_t data) {
 
 static void on_reset_wait_release_timer_expired(void *d, uint32_t data) {
     OW_CTX(d);
+    OW_DEBUGF("on_reset_wait_release_timer_expired: wait for pin change\n");
     // ok, we're ready for the bus to be pulled. Currently, we don't do anything
 }
 

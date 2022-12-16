@@ -34,7 +34,7 @@
 #define _NS(v) ((uint64_t)v *1000)
 #define _US(v) ((uint64_t)v /1000)
 
-#define TOO_EARLY(t, p, e) ((OW_ELAPSED(t) - p) < e)
+#define TOO_EARLY(t, p, e) (get_sim_nanos() + e < t + p) // - (OW_ELAPSED(t) - p) < e)
 
 
 // protocol definitions of various durations
@@ -46,6 +46,7 @@
 //   pull    dur     rls  rls-time  pull  pull-time      rls         ready
 //
 #define PR_DUR_RESET 480                    // initial MASTER reset duration
+#define PR_DUR_FORCED_RESET 485             // forced reset (pin held low for at least this duration)
 #define PR_DUR_RESET_MASTER_RELEASE 30      // SLAVE needs to wait between 15-60us for bus to be released/stabilised
 #define PR_DUR_RESET_PULL_PRESENCE 120      // slv pull-time above
 #define PR_DUR_RESET_SLOT_END  329          // time to slv-ready (1us before nominal end of reset cycle)
@@ -76,7 +77,7 @@
 #define PR_DUR_READ_INIT 1
 
 // allow 2us of jitter
-#define PR_DUR_BUS_JITTER _NS(1)
+#define PR_DUR_BUS_JITTER _NS(2)
 
 
 #define OW_ERR_NO_ERROR 0x0
@@ -125,6 +126,7 @@ typedef enum {
 typedef enum {
     EV_PIN_CHG,
     EV_TIMER_EXPIRED,
+    EV_RESET_TIMER_EXPIRED,
 
     EV_MAX
 } ev_t;
@@ -166,6 +168,7 @@ typedef struct ow_ctx {
     bool bit_buf;
 
     void *user_data;
+    sig_cb forced_reset_callback;
     sig_cb reset_callback;
     sig_cb bit_read_callback;
     sig_cb bit_written_callback;
@@ -183,6 +186,7 @@ typedef struct ow_ctx {
 typedef struct {
     void *data;
     const char *pin_name;
+    sig_cb  forced_reset_cb;
     sig_cb  reset_cb;
     sig_cb  bit_read_cb;
     sig_cb  bit_written_cb;
