@@ -430,7 +430,6 @@ void chip_init()
     char dev_id_attr[SERIAL_LEN * 2];
     
     attr = attr_init("ow_debug", false); chip->ow_debug = attr_read(attr) != 0;
-    printf("ow_debug: %d\n", attr_read(attr));
     attr = attr_init("gen_debug", false); chip->gen_debug = attr_read(attr) != 0;
     attr = attr_init("debug_timer", false); chip->debug_timer = attr_read(attr) != 0;
 

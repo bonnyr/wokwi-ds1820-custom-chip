@@ -227,8 +227,9 @@ void on_not_impl(void *ctx, uint32_t data) {
     printf("not implemented\n");
 }
 
-void on_ignored(void *ctx, uint32_t data) {
-    printf("on_ignored\n");
+void on_ignored(void *d, uint32_t data) {
+    OW_CTX(d);
+    OW_DEBUGF("on_ignored\n");
 }
 
 static void on_reset_detected(void *d, uint32_t data) {
@@ -324,7 +325,7 @@ void ow_ctx_set_master_read_state(ow_ctx_t *ctx, bool bit) {
 
 static void on_reset_init_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
-    printf("on_reset_init_pin_chg - ctx: %p\n", ctx);
+    OW_DEBUGF("on_reset_init_pin_chg - ctx: %p\n", ctx);
 
     // pin transition to LOW starts a RESET sequence, arm the timer
     if (data == LOW) {
@@ -332,7 +333,7 @@ static void on_reset_init_pin_chg(void *d, uint32_t data) {
         timer_start(ctx->timer, PR_DUR_RESET, false);
         ctx->state = ST_RESET_WAIT_RELEASE;
     } else {
-        OW_DEBUGF("L->H transition unexpected during initialisation, ignoring");
+        OW_DEBUGF("L->H transition unexpected during initialisation, ignoring\n");
     }
 }
 
@@ -349,7 +350,7 @@ static void on_reset_wait_release_pin_chg(void *d, uint32_t data) {
     // if pin changed before the expected duration, log and reset
     // note: no need to notify owner, since we're still waiting for reset
     if (TOO_EARLY((ctx->reset_time), _NS(PR_DUR_RESET), PR_DUR_BUS_JITTER)) {
-        OW_DEBUGF("L->H transition happened too soon, (%lld) - resetting", _US(OW_ELAPSED(ctx->reset_time)));
+        OW_DEBUGF("L->H transition happened too soon, (%lld) - resetting\n", _US(OW_ELAPSED(ctx->reset_time)));
         ow_ctx_reset_state(ctx);
         return;
     }
@@ -369,7 +370,7 @@ static void on_reset_wait_release_timer_expired(void *d, uint32_t data) {
 static void on_reset_wait_presence_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
     // unexpected transition, ignore
-    OW_DEBUGF("H->L transition unexpected while waiting for reset release, ignoring");
+    OW_DEBUGF("H->L transition unexpected while waiting for reset release, ignoring\n");
 }
 
 static void on_reset_wait_presence_timer_expired(void *d, uint32_t data) {
@@ -386,7 +387,7 @@ static void on_reset_pull_presence_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
     // expected transition, ignore
     if (data == HIGH) {
-        OW_DEBUGF("L->H transition expected due to pin_mode, ignoring");
+        OW_DEBUGF("L->H transition expected due to pin_mode, ignoring\n");
     }
 }
 
@@ -403,7 +404,7 @@ static void on_reset_done_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
     // unexpected transition, reset
     if (data == LOW) {
-        OW_DEBUGF("H->L transition unexpected when in done state, resetting");
+        OW_DEBUGF("H->L transition unexpected when in done state, resetting\n");
         ow_ctx_reset_state(ctx);
         return;
     }
@@ -513,7 +514,7 @@ static void on_master_read_init_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
 
     if (data == HIGH) {
-        OW_DEBUGF("L->H transition unexpected while waiting for initial pull down during write time slot, resetting");
+        OW_DEBUGF("L->H transition unexpected while waiting for initial pull down during write time slot, resetting\n");
         ow_ctx_reset_state(ctx);
         return;
     }
@@ -543,7 +544,7 @@ static void on_master_read_wait_sample_pin_chg(void *d, uint32_t data) {
 
     // todo(bonnyr): this needs to be confirmed as unexpected
     if (data == LOW) {
-        OW_DEBUGF("H->L transition unexpected while waiting for bus release during write time slot, resetting");
+        OW_DEBUGF("H->L transition unexpected while waiting for bus release during write time slot, resetting\n");
         ow_ctx_reset_state(ctx);
         return;
     }
@@ -565,7 +566,7 @@ static void on_master_read_slot_end_pin_chg(void *d, uint32_t data) {
 
     // todo(bonnyr): this needs to be confirmed as unexpected
     if (data == HIGH && !ctx->bit_buf || data == LOW && ctx->bit_buf) {
-        OW_DEBUGF("L->H or H->L transition unexpected while waiting for READ slot timer, resetting");
+        OW_DEBUGF("L->H or H->L transition unexpected while waiting for READ slot timer, resetting\n");
         ow_ctx_reset_state(ctx);
         return;
     }
@@ -586,7 +587,7 @@ static void on_master_read_done_pin_chg(void *d, uint32_t data) {
     OW_CTX(d);
 
     if (data == LOW) {
-        OW_DEBUGF("H->L transition unexpected while waiting for READ slot bus release, resetting");
+        OW_DEBUGF("H->L transition unexpected while waiting for READ slot bus release, resetting\n");
         ow_ctx_reset_state(ctx);
         return;
     }
@@ -594,11 +595,3 @@ static void on_master_read_done_pin_chg(void *d, uint32_t data) {
     ctx->state = ST_MASTER_READ_INIT;
     ctx->bit_written_callback(ctx->user_data, OW_ERR_NO_ERROR, ctx->bit_buf);
 }
-
-
-
-
-
-
-
-
