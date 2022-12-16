@@ -67,8 +67,11 @@ The chip defines a number of attributes that alter the behavior of the  operatio
 
 | Name         | Description                                            | Default value             |
 | ------------ | ------------------------------------------------------ | ------------------------- |
+| <span id="owDebug">ow_debug</span>   |  controls debug output for base one wire link layer code | "0"                 |
+| <span id="genDebug">gen_debug</span>   |  controls debug output for the chip code | "0"                 |
 | <span id="deviceMode">deviceMode</span>   |  controls whether the device behaves as if it was connected to Vdd or uses parasitic voltage | "0"                 |
-| <span id="deviceID">deviceID</span>   |  Specifies the 64bit device serial number. This is a string and the value should be limited to precisely 16hex digits<br>Note the serial number must be a valid id, including CRC | "9F9D876799C4F707"                 |
+| <span id="deviceID">deviceID</span>   |  Specifies the unique 48bit device serial number. This is a string and the value should be limited to precisely 12hex digits<br>Note the device serial's CRC is calculated during init | "010203040506"                 |
+| <span id="familyCode">familyCode</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28` | "`0x10`"                 |
 
 ## Simulator examples
 

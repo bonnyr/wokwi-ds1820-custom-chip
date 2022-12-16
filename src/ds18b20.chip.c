@@ -23,7 +23,14 @@
 #define SERIAL_LEN 8
 #define SCRATCH_LEN 9
 #define EEPROM_LEN 3
-#define CUR_BIT(chip) ((chip->buffer[chip->byte_ndx] &= 1 << chip->bit_ndx) != 0)
+#define CUR_BIT(chip) ((chip->buffer[chip->byte_ndx] & (1 << chip->bit_ndx)) != 0)
+
+// Temperature sensor family codes (byte 0 of serial number)
+#define DS_FC_18S20     0x10
+#define DS_FC_18B20     0x28
+#define DS_FC_1822      0x22
+// #define DS_FC_1825      0x3B
+// #define DS_FC_28EA00    0x42
 
 // rom commands
 #define OW_CMD_SEARCH           0xF0
@@ -149,6 +156,9 @@ typedef struct
     // the temperature from config
     uint32_t temperature;
 
+    // the Dallas Family Code to use
+    uint8_t family_code;
+
     // debug
     bool debug_timer;
     bool ow_debug;
@@ -168,6 +178,7 @@ typedef HASHMAP(uint16_t, cmd_entry_t) cmd_map_t;
 // ==================== forward decls =========================
 static void chip_reset_state(chip_desc_t *chip);
 
+void on_forced_reset_cb(void *d, uint32_t err, uint32_t data) ;
 void on_reset_cb(void *d, uint32_t err, uint32_t data) ;
 void on_bit_written_cb(void *d, uint32_t err, uint32_t data);
 void on_bit_read_cb(void *d, uint32_t err, uint32_t data) ;
@@ -303,6 +314,11 @@ static sm_cfg_t sm_wr_bit_cfg = {
 
 static sm_t *sm_wr_bit = &(sm_t){.cfg = &sm_wr_bit_cfg};
 
+
+static uint8_t supported_family_codes[] = { 
+    DS_FC_18S20, DS_FC_18B20, DS_FC_1822
+};
+
 static cmd_entry_t cmd_entries[] = {
     { ST_WAIT_CMD << 8 | OW_CMD_MATCH, on_ow_match },
     { ST_WAIT_CMD << 8 | OW_CMD_SKIP, on_ow_skip },
@@ -363,6 +379,24 @@ void cmd_init_hash() {
 }
 
 
+const char*debugBinStr(char *p, size_t c) {
+    static char buf[200];
+    char *pb = buf;
+    if (c > 16) {
+        c = 16;        
+    }
+
+    for (; c > 0; --c) {
+        uint8_t b = *p++;
+        for ( int i = 0; i < 8; i++) {
+            *pb++ = (b & 1 << i) ? '1' : '0'; 
+        }
+        *pb++ = ' ';
+    }
+    *pb = 0;
+    return buf;
+
+}
 
 // ==================== Implementation =========================
 void chip_init()
@@ -375,6 +409,7 @@ void chip_init()
             .bit_written_cb = on_bit_written_cb,
             .bit_read_cb = on_bit_read_cb,
             .reset_cb = on_reset_cb,
+            .forced_reset_cb = on_forced_reset_cb,
             .pin_name = "DQ",
             .data = chip,
     };
@@ -391,36 +426,47 @@ void chip_init()
 
     // read config attributes
     uint32_t attr;
+    uint32_t len;
+    char dev_id_attr[SERIAL_LEN * 2];
     
     attr = attr_init("ow_debug", false); chip->ow_debug = attr_read(attr) != 0;
-    printf("ow_debug: %d\n", attr_read(attr));
     attr = attr_init("gen_debug", false); chip->gen_debug = attr_read(attr) != 0;
     attr = attr_init("debug_timer", false); chip->debug_timer = attr_read(attr) != 0;
 
     attr = attr_init("temperature", 0); chip->temperature = attr_read(attr);
 
-    printf("*** DS18B20 setting attributes:\n  gen_debug: %d\n  ow_debug: %d\n  temperature: %d\n", 
-    chip->gen_debug, chip->ow_debug, chip->temperature);
+    // initialise device id
+    attr = attr_init("family_code", DS_FC_18S20); chip->serial_no[0] = attr_read(attr) & 0xFF;
+    if (memchr(supported_family_codes, chip->serial_no[0], sizeof(supported_family_codes)) == NULL) {
+        printf("*** DS18B20 device family code not supported (%d), expect errors...\n", chip->serial_no[0]);
+    }
+
+    attr = attr_string_init("device_id"); 
+    len = string_read(attr, dev_id_attr, 13 );  // expecting 12 Hex Digits + NULL
+    if (len < 12) {
+        printf("*** DS18B20 device id too short (%d), expect errors...\n", len);
+    }
+
+    for (int i = 0; i < 6; i++) {
+        char tmp = dev_id_attr[i * 2 + 2];
+        dev_id_attr[i*2+2] = 0;
+        chip->serial_no[i + 1] = strtol(dev_id_attr + i * 2, NULL, 16 );
+        dev_id_attr[i*2+2] = tmp;
+    }
+
+    chip->serial_no[7] = crc8(chip->serial_no, 7);
 
 //    attr = attr_init("presence_wait_time", PR_DUR_WAIT_PRESENCE);
 //    chip->presence_wait_time = attr_read(attr);
 //    attr = attr_init("presence_time", PR_DUR_PULL_PRESENCE);
 //    chip->presence_time = attr_read(attr);
+   
 
-    
-    // attr = attr_init("device_id", "9F9D876799C4F707"); 
-    const char *dev_id_str = "9F9D876799C4F707";//= attr_read(attr);
-    uint64_t tmp = strtoull(dev_id_str, NULL, 16);
-    printf("serial: %llx\n", tmp);
+    printf("*** DS18B20 setting attributes:\n  gen_debug: %d\n  ow_debug: %d\n  temperature: %d\n", 
+    chip->gen_debug, chip->ow_debug, chip->temperature);
 
-    // this is a hack. just until I can get string attributes...
-    *(uint64_t *)chip->serial_no = tmp;
-    for (int i = 0; i < 4; i++ ){
-        uint8_t tmp = chip->serial_no[i];
-        chip->serial_no[i] = chip->serial_no[7-i];
-        chip->serial_no[7-i] = tmp;
-    }
-    for (int i = 0; i < 8; i++ ){
+    printf("  device_id: ");
+    for (int i = 0; i < SERIAL_LEN; i++ ){
         printf("%02x", chip->serial_no[i]);
     }
     printf("\n");
@@ -498,12 +544,17 @@ void push_cmd_sm_event(chip_desc_t *chip, sm_t *sm, uint32_t state, uint32_t ev,
 
 
 // ==================== API handlers =========================
+void on_forced_reset_cb(void *d, uint32_t err, uint32_t data) {
+    chip_desc_t *chip = d;
+    DEBUGF("on_force_reset_cb\n");
+
+    chip_reset_state(chip);
+}
+
 
 void on_reset_cb(void *d, uint32_t err, uint32_t data) {
     chip_desc_t *chip = d;
-
     DEBUGF("on_reset_cb\n");
-
 
     // reset is done, now wait for master to write command byte, defer to byte SM
     chip_ready_for_next_cmd(chip);
@@ -569,6 +620,8 @@ void on_byte_written_cb(void *d, uint32_t err, uint32_t data) {
 }
 
 
+// ------------- Seach command SM -----------------
+
 void on_search_bit_written_cb(void *d, uint32_t err, uint32_t data) {
     chip_desc_t *chip = d;
 
@@ -581,8 +634,6 @@ void on_search_bit_written_cb(void *d, uint32_t err, uint32_t data) {
     push_cmd_sm_event(chip, chip->cmd_ctx.cmd_sm, chip->cmd_ctx.state, EV_BIT_WRITTEN, data);
 }
 
-
-// ------------- Seach command SM -----------------
 void on_search_bit_read_cb(void *d, uint32_t err, uint32_t data) {
     chip_desc_t *chip = d;
 
@@ -611,7 +662,7 @@ static void on_master_search_error(void *user_data, uint32_t data) {
 
 static void on_master_search_bit_written(void *user_data, uint32_t data) {
     chip_desc_t *chip = user_data;
-    DEBUGF("on_master_search_bit_written: %d\n", data);
+    DEBUGF("on_master_search_bit_written: %d (cur bit: %d)\n", data, CUR_BIT(chip));
 
     chip->cmd_ctx.state = ST_MASTER_SEARCH_WRITE_INV_BIT;
 
@@ -621,18 +672,18 @@ static void on_master_search_bit_written(void *user_data, uint32_t data) {
 
 static void on_master_search_inv_bit_written(void *user_data, uint32_t data) {
     chip_desc_t *chip = user_data;
-    DEBUGF("on_master_search_inv_bit_written: %d\n", data);
+    DEBUGF("on_master_search_inv_bit_written: %d (cur bit: %d)\n", data, !CUR_BIT(chip));
 
     chip->cmd_ctx.state = ST_MASTER_SEARCH_READ_BIT;
     // todo(bonnyr): refactor to a function in signalling
-    ow_ctx_set_master_write_state(chip->ow_ctx, chip->cur_bit);
+    ow_ctx_set_master_write_state(chip->ow_ctx, CUR_BIT(chip));
 }
 
 
 static void on_master_search_bit_read(void *user_data, uint32_t data) {
     chip_desc_t *chip = user_data;
 
-    DEBUGF("on_master_search_bit_read: comparing bit %d - m:%d, s:%d\n", chip->byte_ndx * 8 + chip->bit_ndx, data, CUR_BIT(chip))
+    DEBUGF("on_master_search_bit_read: comparing bit %d - m:%d, d:%d\n", chip->byte_ndx * 8 + chip->bit_ndx, data, CUR_BIT(chip))
     // if master transmitted bit does not match ours, reset
     if (data != CUR_BIT(chip))  {
         chip_reset_state(chip);
@@ -782,24 +833,6 @@ static void on_rom_command(chip_desc_t *chip, uint8_t cmd) {
         chip_reset_state(chip);
     }
 
-//     switch(cmd) {
-//         case OW_CMD_SEARCH:
-//             on_ow_search(chip);
-//             return;
-//         case OW_CMD_READ:
-//             on_ow_read_rom(chip);
-//             return;
-//         case OW_CMD_MATCH:
-//             on_ow_match(chip);
-//             return;
-//         case OW_CMD_SKIP:
-//             on_ow_skip(chip);
-//             return;
-// //            case OW_CMD_ALM_SEARCH:
-//         default:
-//             break;
-//     }
-//     return;
 }
 
 static void on_func_command(chip_desc_t *chip, uint8_t cmd) {
@@ -813,31 +846,6 @@ static void on_func_command(chip_desc_t *chip, uint8_t cmd) {
     
     DEBUGF("**** func command %02x not implemented\n", cmd);
     chip_reset_state(chip);
-
-    // switch (cmd) {
-    //     case DS_CMD_CONVERT:
-    //         on_ds_convert(chip);
-    //         return;
-    //     case DS_CMD_WR_SCRATCH:
-    //         on_ds_write_scratchpad(chip);
-    //         return;
-    //     case DS_CMD_RD_SCRATCH:
-    //         on_ds_read_scratchpad(chip);
-    //         return;
-    //     case DS_CMD_CP_SCRATCH:
-    //         on_ds_copy_scratchpad(chip);
-    //         return;
-    //     case DS_CMD_RECALL:
-    //         on_ds_recall(chip);
-    //         return;
-    //     case DS_CMD_RD_PWD:
-    //         on_ds_read_power(chip);
-    //         return;
-    //     default:
-    //     DEBUGF("**** function command %02x not implemented\n", cmd);
-    //         chip_reset_state(chip);
-    //         break;
-    // }
 }
 
 
@@ -847,16 +855,23 @@ static void on_func_command(chip_desc_t *chip, uint8_t cmd) {
 static void on_ow_search(chip_desc_t *chip) {
     DEBUGF("on_ow_search\n");
     memcpy(chip->buffer, chip->serial_no, SERIAL_LEN);
+    DEBUGF("on_ow_search %s\n", debugBinStr((char *)chip->serial_no, SERIAL_LEN));
+    DEBUGF("on_ow_search b1 %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
     chip->sig_mode = ST_SIG_BIT_MODE;
     chip->cmd_ctx.state = ST_MASTER_SEARCH_WRITE_BIT;
     chip->cmd_ctx.cmd_sm = sm_search;
+    DEBUGF("on_ow_search b2 %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
+    DEBUGF("on_ow_search b2a %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
     chip->cur_bit = CUR_BIT(chip);
+    DEBUGF("on_ow_search b2b %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
     // chip->resp_len = SERIAL_LEN;
+    DEBUGF("on_ow_search %s\n", debugBinStr((char *)chip->serial_no, SERIAL_LEN));
+    DEBUGF("on_ow_search b3 %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
 
     ds_func_cmd_prime_next_bit(chip);
-    DEBUGF("on_ow_search started\n");
+    DEBUGF("on_ow_search started with %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
 }
 
 static void on_ow_read_rom(chip_desc_t *chip) {
@@ -980,7 +995,7 @@ static void on_ds_read_power(chip_desc_t *chip) {
     chip->cmd_ctx.cmd_sm = sm_wr_bit;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    chip->buffer[0] = 0x01; // indicate we're running on parasite power
+    chip->buffer[0] = 0x00; // indicate we're running on parasite power
 
     ds_func_cmd_prime_next_bit(chip);
     DEBUGF("on_ds_read_power\n");
