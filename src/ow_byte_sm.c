@@ -17,7 +17,6 @@ static void on_read_byte_running_bit_written(void *d, uint32_t data);
 static void on_write_byte_running_bit_read(void *d, uint32_t data);
 
 
-
 sm_entry_t sm_write_byte_entries[] = { //[ST_RESET_MAX][EV_MAX]
         // ST_WRITE_RUNNING
         SM_E(ST_WRITE_RUNNING, EV_BIT_READ, on_write_byte_running_bit_read),
@@ -30,12 +29,9 @@ sm_entry_t sm_write_byte_entries[] = { //[ST_RESET_MAX][EV_MAX]
 
 sm_cfg_t sm_write_byte_cfg = {
         .name = "sm_write_byte",
-        .max_states = ST_WRITE_MAX,
-        .max_events = EV_BYTE_MAX,
         .sm_entries = sm_write_byte_entries,
         .num_entries = sizeof sm_write_byte_entries/sizeof(sm_entry_t),
 };
-
 
 sm_entry_t sm_read_byte_entries[] = { //[ST_RESET_MAX][EV_MAX]
         // ST_READ_RUNNING
@@ -47,11 +43,8 @@ sm_entry_t sm_read_byte_entries[] = { //[ST_RESET_MAX][EV_MAX]
         SM_E(ST_READ_DONE, EV_BIT_WRITTEN, on_not_impl),
 };
 
-
 sm_cfg_t sm_read_byte_cfg = {
         .name = "sm_read_byte",
-        .max_states = ST_READ_MAX,
-        .max_events = EV_BYTE_MAX,
         .sm_entries = sm_read_byte_entries,
         .num_entries = sizeof(sm_read_byte_entries)/sizeof(sm_entry_t)
 };
@@ -61,15 +54,7 @@ sm_t *sm_read_byte  = &(sm_t){.cfg = &sm_read_byte_cfg};
 sm_t *sm_write_byte  = &(sm_t){.cfg = &sm_write_byte_cfg};
 
 
-
-
 // --------------- read/write byte state handlers -----------------------
-
-//void ow_read_byte_ctx_set_read_state(ow_byte_ctx_t *ctx, u) {
-//    ctx->byte_buf = bit;
-//    ctx->state = ST_MASTER_READ_INIT;
-//}
-
 void ow_read_byte_bit_written_cb(void *d, uint32_t err, uint32_t data) {
     ow_byte_ctx_t *ctx = d;
     OW_DEBUGF("ow_read_byte_bit_written_cb: %d\n", data);
@@ -84,7 +69,6 @@ void ow_read_byte_bit_written_cb(void *d, uint32_t err, uint32_t data) {
     ctx->state = ST_READ_RUNNING;
 
     sm_push_event(sm_read_byte, ctx, ctx->reset_fn, ctx->state, EV_BIT_WRITTEN, data, ctx->ow_debug);
-//    push_cmd_sm_event(ctx, EV_BIT_READ, data);
 }
 
 
@@ -144,6 +128,7 @@ void ow_write_byte_bit_read_cb(void *d, uint32_t err, uint32_t data) {
 
     sm_push_event(sm_write_byte, ctx, ctx->reset_fn, ctx->state, EV_BIT_READ, data, ctx->ow_debug);
 }
+
 static void ow_write_byte_reset_cb(void *ctx) { ow_write_byte_ctx_reset_state((ow_byte_ctx_t *) ctx, 0);}
 ow_byte_ctx_t *ow_write_byte_ctx_init(void *data, byte_cb cb, ow_ctx_t *ow_ctx) {
     ow_byte_ctx_t *ctx = calloc(1, sizeof(ow_byte_ctx_t));
@@ -167,9 +152,6 @@ void ow_write_byte_ctx_reset_state(ow_byte_ctx_t *ctx, uint8_t byte_buf) {
     ctx->bit_ndx = 0;
     ctx->byte_buf = byte_buf;
     
-    // ow_ctx_set_master_read_state(ctx->ow_ctx, ctx->byte_buf & 0x80);
-    // OW_DEBUGF("write_byte: setting ow state to READ: %p (%d)\n", ctx->ow_ctx, ctx->ow_ctx->state );
-
     ctx->ow_ctx->bit_buf = ctx->byte_buf & 0x01;
 }
 
@@ -186,5 +168,3 @@ static void on_write_byte_running_bit_read(void *d, uint32_t data) {
         ctx->callback(ctx->user_data, OW_ERR_NO_ERROR, ctx->byte_buf);
     }
 }
-
-

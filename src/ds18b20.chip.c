@@ -8,15 +8,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "ow.h"
 
 #define DEBUG 1
 
 // --------------- Debug Macros -----------------------
 #ifdef DEBUG
-#define DEBUGF(...)      { if (chip->gen_debug) {printf(__VA_ARGS__);} }
+#define DEBUGF(...)      { if (chip->gen_debug) {printf("%lld ", get_sim_nanos()/1000); printf(__VA_ARGS__);} }
+char buf[200];
 #endif //  DEBUG
 // --------------- Debug Macros -----------------------
+
+#define max(a, b) ({__typeof__(a) _a = (a); __typeof__(b) _b = b; _a > _b ? _a : b;})
 
 // buffers
 #define BUF_LEN 32
@@ -24,6 +28,10 @@
 #define SCRATCH_LEN 9
 #define EEPROM_LEN 3
 #define CUR_BIT(chip) ((chip->buffer[chip->byte_ndx] & (1 << chip->bit_ndx)) != 0)
+
+// Temperature consts
+#define MAX_TEMPERATURE (125)
+#define MIN_TEMPERATURE (-55)
 
 // Temperature sensor family codes (byte 0 of serial number)
 #define DS_FC_18S20     0x10
@@ -46,7 +54,7 @@
 #define DS_CMD_RECALL           0xB8
 #define DS_CMD_RD_PWD           0xB4
 
-// scratch pad offsets
+// scratch pad offsets (DS18B20)
 #define CHIP_SP_TEMP_LOW_OFF    0x00
 #define CHIP_SP_TEMP_HI_OFF     0x01
 #define CHIP_SP_USER_BYTE_1_OFF 0x02
@@ -57,10 +65,18 @@
 #define CHIP_SP_RSVD_3_OFF      0x07
 #define CHIP_SP_CRC_OFF         0x08
 
+// scratch pad offsets  - diff only (DS18S20)
+#define CHIP_SP_REMAIN_CNT_OFF  0x06
+#define CHIP_SP_CNT_PER_C_OFF   0x07
+
 // EEPROM offsets
 #define CHIP_EE_TEMP_LOW_OFF    0x00
 #define CHIP_EE_TEMP_HI_OFF     0x01
 #define CHIP_EE_CFG_REG_OFF     0x02
+
+// Configuration register bits
+#define CHIP_CFG_TEMP_BITS_MASK 0x60
+#define CHIP_CFG_TEMP_BITS_OFF  5      
 
 typedef enum {
     ST_SIG_BIT_MODE,
@@ -142,22 +158,20 @@ typedef struct
     chip_state_t state;             // overwall chip one wire state
     sig_mode_t sig_mode;            // signaling mode - handling bits or bytes
     cmd_ctx_t cmd_ctx;              // current command context
+    uint32_t rom_command;           // remember the current command (needed for search/almsearch)
 
     // comms buffer
     uint8_t buffer[BUF_LEN];        
     int bit_ndx;
     int byte_ndx;
-    bool cur_bit;
 
-    // configurable timing vars
-    uint32_t presence_wait_time;
-    uint32_t presence_time;
+    // the temperature from config and alarm value based on last conversion
+    float temperature;
+    bool alarm;
 
-    // the temperature from config
-    uint32_t temperature;
-
-    // the Dallas Family Code to use
-    uint8_t family_code;
+    // the power pin, used to determine power mode
+    pin_t vdd_pin;
+    bool powered;
 
     // debug
     bool debug_timer;
@@ -209,7 +223,7 @@ static void on_ow_search(chip_desc_t *chip);
 static void on_ow_read_rom(chip_desc_t *chip);
 static void on_ow_match(chip_desc_t *chip);
 static void on_ow_skip(chip_desc_t *chip);
-static void on_ow_alarm_seach(chip_desc_t *chip);
+static void on_ow_alarm_search(chip_desc_t *chip);
 
 static void on_ds_convert(chip_desc_t *chip);
 static void on_ds_write_scratchpad(chip_desc_t *chip);
@@ -241,8 +255,6 @@ static sm_cfg_t sm_search_cfg = {
         .name = "sm_search",
         .sm_entries = sm_search_entries,
         .num_entries = sizeof(sm_search_entries)/sizeof(sm_entry_t),
-        .max_states = ST_MASTER_SEARCH_MAX,
-        .max_events = EV_MAX
 };
 
 static sm_t *sm_search = &(sm_t){.cfg = &sm_search_cfg};
@@ -262,8 +274,6 @@ static sm_cfg_t sm_match_cfg = {
         .name = "sm_match",
         .sm_entries = sm_match_entries,
         .num_entries = sizeof(sm_match_entries)/sizeof(sm_entry_t),
-        .max_states = ST_MASTER_MATCH_MAX,
-        .max_events = EV_MAX
 };
 
 static sm_t *sm_match = &(sm_t){.cfg = &sm_match_cfg};
@@ -278,8 +288,6 @@ static sm_cfg_t sm_wr_sp_cfg = {
                 SM_E(ST_MASTER_WR_SP_BYTE_READ, EV_BYTE_READ, on_master_wr_sp_byte_read),
         },
         .num_entries = 1,
-        .max_states = ST_MASTER_MATCH_MAX,
-        .max_events = EV_MAX
 };
 
 static sm_t *sm_wr_sp = &(sm_t){.cfg = &sm_wr_sp_cfg};
@@ -294,8 +302,6 @@ static sm_cfg_t sm_rd_byte_cfg = {
                 SM_E(ST_MASTER_RD_BYTE_BYTE_WRITTEN, EV_BYTE_WRITTEN, on_master_rd_byte_byte_written),
         },
         .num_entries = 1,
-        .max_states = ST_MASTER_RD_BYTE_MAX,
-        .max_events = EV_MAX
 };
 
 static sm_t *sm_rd_byte = &(sm_t){.cfg = &sm_rd_byte_cfg};
@@ -308,22 +314,20 @@ static sm_cfg_t sm_wr_bit_cfg = {
                 SM_E(ST_MASTER_RD_BIT_BIT_WRITTEN, EV_BIT_WRITTEN, on_master_rd_bit_bit_written),
         },
         .num_entries = 1,
-        .max_states = ST_MASTER_RD_BIT_MAX,
-        .max_events = EV_MAX
 };
 
 static sm_t *sm_wr_bit = &(sm_t){.cfg = &sm_wr_bit_cfg};
 
 
 static uint8_t supported_family_codes[] = { 
-    DS_FC_18S20, DS_FC_18B20, DS_FC_1822
+    DS_FC_18S20, DS_FC_18B20//, DS_FC_1822
 };
 
 static cmd_entry_t cmd_entries[] = {
     { ST_WAIT_CMD << 8 | OW_CMD_MATCH, on_ow_match },
     { ST_WAIT_CMD << 8 | OW_CMD_SKIP, on_ow_skip },
     { ST_WAIT_CMD << 8 | OW_CMD_SEARCH, on_ow_search },
-    { ST_WAIT_CMD << 8 | OW_CMD_ALM_SEARCH, on_ow_alarm_seach },
+    { ST_WAIT_CMD << 8 | OW_CMD_ALM_SEARCH, on_ow_alarm_search },
     { ST_WAIT_CMD << 8 | OW_CMD_READ, on_ow_read_rom },
 
     { ST_WAIT_FN_CMD << 8 | DS_CMD_WR_SCRATCH, on_ds_write_scratchpad },
@@ -354,7 +358,7 @@ uint8_t crc8(const uint8_t *addr, uint8_t len)
 
 	while (len--) {
 		crc = *addr++ ^ crc;  // just re-using crc as intermediate
-		crc = *(dscrc2x16_table + (crc & 0x0f)) ^ *(dscrc2x16_table + 16 + ((crc >> 4) & 0x0f));
+		crc = dscrc2x16_table[crc & 0x0f] ^ dscrc2x16_table[ 16 + ((crc >> 4) & 0x0f)];
 	}
 
 	return crc;
@@ -380,7 +384,6 @@ void cmd_init_hash() {
 
 
 const char*debugBinStr(char *p, size_t c) {
-    static char buf[200];
     char *pb = buf;
     if (c > 16) {
         c = 16;        
@@ -397,6 +400,19 @@ const char*debugBinStr(char *p, size_t c) {
     return buf;
 
 }
+
+const char*debugHexStr(uint8_t *p, size_t c) {
+    char *pb = (char *)buf;
+    c = max(c, 16);
+    for (; c--;) {
+        pb += sprintf(pb, "%02x ", *p++);
+    }
+    *pb = 0;
+    return buf;
+}
+
+
+
 
 // ==================== Implementation =========================
 void chip_init()
@@ -419,7 +435,6 @@ void chip_init()
     chip->ow_ctx = ow_ctx;
     chip->ow_read_byte_ctx = ow_read_byte_ctx_init(chip, on_byte_read_cb, ow_ctx);
     chip->ow_write_byte_ctx = ow_write_byte_ctx_init(chip, on_byte_written_cb, ow_ctx);
-    printf("ow_write_byte_ctx: %p, ow_ctx: %p, wb_ow_ctx: %p\n", chip->ow_write_byte_ctx, ow_ctx, chip->ow_write_byte_ctx->ow_ctx);
 
     // initialise command map
     cmd_init_hash();
@@ -433,7 +448,13 @@ void chip_init()
     attr = attr_init("gen_debug", false); chip->gen_debug = attr_read(attr) != 0;
     attr = attr_init("debug_timer", false); chip->debug_timer = attr_read(attr) != 0;
 
-    attr = attr_init("temperature", 0); chip->temperature = attr_read(attr);
+    attr = attr_init_float("temperature", 0); chip->temperature = attr_read_float(attr);
+    if (chip->temperature > MAX_TEMPERATURE) {
+        chip->temperature = MAX_TEMPERATURE;
+    }
+    if (chip->temperature < MIN_TEMPERATURE) {
+        chip->temperature = MIN_TEMPERATURE;
+    }
 
     // initialise device id
     attr = attr_init("family_code", DS_FC_18S20); chip->serial_no[0] = attr_read(attr) & 0xFF;
@@ -460,10 +481,12 @@ void chip_init()
 //    chip->presence_wait_time = attr_read(attr);
 //    attr = attr_init("presence_time", PR_DUR_PULL_PRESENCE);
 //    chip->presence_time = attr_read(attr);
-   
 
-    printf("*** DS18B20 setting attributes:\n  gen_debug: %d\n  ow_debug: %d\n  temperature: %d\n", 
-    chip->gen_debug, chip->ow_debug, chip->temperature);
+    chip->vdd_pin = pin_init("Vdd", INPUT);
+    chip->powered = pin_read(chip->vdd_pin);
+
+    printf("*** DS18B20 setting attributes:\n  gen_debug: %d\n  ow_debug: %d\n  temperature: %f\n  family_code: %2x\n", 
+    chip->gen_debug, chip->ow_debug, chip->temperature, chip->serial_no[0]);
 
     printf("  device_id: ");
     for (int i = 0; i < SERIAL_LEN; i++ ){
@@ -486,6 +509,14 @@ static void chip_reset_state(chip_desc_t *chip) {
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
     memset(chip->buffer, 0, BUF_LEN);
+
+    // setup scratch pad based on family code
+    if (chip->serial_no[0] == DS_FC_18S20) {
+        //see  https://www.analog.com/media/en/technical-documentation/data-sheets/ds18s20.pdf (measuring temp)
+        // chip->scratch_pad[CHIP_SP_REMAIN_CNT_OFF] = 0; 
+        chip->scratch_pad[CHIP_SP_CNT_PER_C_OFF] = 16; 
+    }
+
 
 }
 
@@ -510,27 +541,24 @@ static void chip_ready_for_next_func_cmd(chip_desc_t *chip) {
     chip_ready_for_next_cmd_byte(chip, ST_WAIT_FN_CMD, "func");
 }
 
-
 // ==================== API handlers =========================
 void push_cmd_sm_event(chip_desc_t *chip, sm_t *sm, uint32_t state, uint32_t ev, uint32_t ev_data) {
 
     if (!sm->hash) {
-        DEBUGF("%08lld %s Initialising hash\n", get_sim_nanos(),sm->cfg->name);
+        DEBUGF("%s Initialising hash\n", sm->cfg->name);
         sm_init_hash(sm);
     }
 
     uint64_t key = state_event_to_key(state, ev);
     sm_entry_t *e = hashmap_get((sm_entry_map_t *)sm->hash, &key);
 
-//    sm_entry_t e = *(sm->sm_entries + sm->max_events * state + event);
-
     if (e == NULL || e->handler == NULL) {
         DEBUGF("(%s) SM error: unhandled event %d in state %d (e %p)), resetting\n", sm->cfg->name, ev, state, e);
         chip_reset_state(chip);
         return;
     } else {
-        DEBUGF("%08lld %s %s[%s]: %s( %d ) -> %p\n",
-               get_sim_nanos(), sm->cfg->name, e->st_name,
+        DEBUGF("%s %s[%s]: %s( %d ) -> %p\n",
+               sm->cfg->name, e->st_name,
                e->ev_name, e->name, ev_data, e->handler);
         e->handler(chip, ev_data);
     }
@@ -580,11 +608,11 @@ void on_bit_read_cb(void *d, uint32_t err, uint32_t data) {
 
     if (chip->sig_mode == ST_SIG_BYTE_MODE) {
         // current command is deferring bits to byte writer
-        DEBUGF("on_bit_read_cb: calling bit_callback %p\n", chip->ow_write_byte_ctx);
+        DEBUGF("on_bit_read_cb: calling bit_callback %p (%d)\n", chip->ow_write_byte_ctx, data);
         chip->ow_read_byte_ctx->bit_callback(chip->ow_read_byte_ctx, err, data);
     } else {
         // current command is directly handling bits, run its state machine
-        DEBUGF("on_bit_read_cb: calling own sm\n");
+        DEBUGF("on_bit_read_cb: calling own sm (%d)\n", data);
         push_cmd_sm_event(chip, chip->cmd_ctx.cmd_sm, chip->cmd_ctx.state, EV_BIT_READ, data);
     }
 }
@@ -647,9 +675,7 @@ void on_search_bit_read_cb(void *d, uint32_t err, uint32_t data) {
 }
 
 static void ds_func_cmd_prime_next_bit(chip_desc_t *chip) {
-    chip->cur_bit = CUR_BIT(chip);
-
-    ow_ctx_set_master_read_state(chip->ow_ctx, chip->cur_bit);
+    ow_ctx_set_master_read_state(chip->ow_ctx, CUR_BIT(chip));
     DEBUGF("ds_func_cmd_prime_next_bit: ow_ctx: %p, ow_ctx->state: %d\n", chip->ow_ctx, chip->ow_ctx->state);
 }
 
@@ -690,6 +716,14 @@ static void on_master_search_bit_read(void *user_data, uint32_t data) {
         return;
     }
 
+    // if this is an alarm search and the chip did not record it, terminate
+    // this is only done after the first bit
+    if (chip->bit_ndx == 0 && chip->rom_command == OW_CMD_ALM_SEARCH && !chip->alarm) {
+        DEBUGF("on_master_search_bit_read: alarm search terminates since we are not alarmed\n");
+        chip_reset_state(chip);
+        return;
+    }
+
     chip->bit_ndx++;
     if (chip->bit_ndx >= 8) {
         chip->bit_ndx = 0;
@@ -717,29 +751,43 @@ static void on_master_write_scratchpad_error(void *user_data, uint32_t data) {
 
 static void on_master_wr_sp_byte_read(void *user_data, uint32_t data) {
     chip_desc_t *chip = user_data;
+    bool done = false;
 
+    chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx++;
 
-    if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx == 0) {
-        chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = data & 0xFF;
+    if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx == 1) {
+        chip->scratch_pad[CHIP_SP_USER_BYTE_1_OFF] = data & 0xFF;
         DEBUGF("on_master_wr_sp_byte_read: writing TH byte %02x\n", data);
-    } else if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx == 1 ) {
-        chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = data & 0xFF;
+    } 
+    
+    if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx == 2 ) {
+        chip->scratch_pad[CHIP_SP_USER_BYTE_2_OFF] = data & 0xFF;
         DEBUGF("on_master_wr_sp_byte_read: writing TL byte %02x\n", data);
-    } if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx == 2 ) {
+    } 
+
+    if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx == 3 ) {
         chip->scratch_pad[CHIP_SP_CFG_REG_OFF] = data & 0xFF;
         DEBUGF("on_master_wr_sp_byte_read: writing CFG byte %02x\n", data);
     }
 
-    chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx++;
-    if (chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx >= 3) {
+    // 3rd byte depends on family code    
+    switch (chip->serial_no[0]) {
+        case DS_FC_18S20:
+            done = chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx >= 2;
+            break;
 
-        update_crc8(chip);
-
-        DEBUGF("on_master_wr_sp_byte_read: *** finished, starting next cycle\n");
-        for (int i = 0;i < SCRATCH_LEN; i++)
-            DEBUGF("on_master_wr_sp_byte_read: byte %d: %02x\n", i, chip->scratch_pad[i]);  
-        chip_reset_state(chip);
+        case DS_FC_18B20:
+        default:
+            done = chip->cmd_ctx.cmd_data.wr_sp_ctx.byte_ndx >= 3;
     }
+
+    if (done)
+    {
+        update_crc8(chip);
+        chip_reset_state(chip);
+        DEBUGF("on_master_wr_sp_byte_read: *** finished, starting next cycle\n");
+    }
+    DEBUGF("on_master_wr_sp_byte_read: scratchpad: %s\n", debugHexStr(chip->scratch_pad, SCRATCH_LEN));  
 }
 
 // ------------- Read Byte command SM -----------------
@@ -772,9 +820,7 @@ static void on_master_rd_byte_byte_written(void *user_data, uint32_t data) {
 
 // ------------- Match command SM -----------------
 static void match_start_prime_next_bit(chip_desc_t *chip) {
-    chip->cur_bit = CUR_BIT(chip);
-
-    ow_ctx_set_master_write_state(chip->ow_ctx, chip->cur_bit);
+    ow_ctx_set_master_write_state(chip->ow_ctx, CUR_BIT(chip));
     DEBUGF("match_start_prime_next_bit: ow_ctx: %p, ow_ctx->state: %d\n", chip->ow_ctx, chip->ow_ctx->state);
 }
 
@@ -822,53 +868,54 @@ static void on_master_rd_bit_bit_written(void *user_data, uint32_t data) {
 
 
 // ==================== Logic Implementation =========================
-static void on_rom_command(chip_desc_t *chip, uint8_t cmd) {
-    DEBUGF("on_rom_command %2X\n", cmd);
-    uint16_t key = cmd_to_key(ST_WAIT_CMD, cmd);
+static void on_command_word(chip_desc_t *chip, uint8_t cmd, const char *cmd_type_name, chip_state_t st) {
+    DEBUGF("on_%s_command %2X\n", cmd_type_name, cmd);
+    uint16_t key = cmd_to_key(st, cmd);
     cmd_entry_t *e = hashmap_get(cmd_map, &key);
     if (e != NULL) {
         e->handler(chip);
-    } else {
-        DEBUGF("**** rom command %02x not implemented\n", cmd);
-        chip_reset_state(chip);
+        return;
     }
 
-}
-
-static void on_func_command(chip_desc_t *chip, uint8_t cmd) {
-    DEBUGF("on_func_command %2X\n", cmd);
-    uint16_t key = cmd_to_key(ST_WAIT_FN_CMD, cmd);
-    cmd_entry_t *e = hashmap_get(cmd_map, &key);
-    if (e != NULL) {
-        e->handler(chip);
-        return;   
-    }
-    
-    DEBUGF("**** func command %02x not implemented\n", cmd);
+    DEBUGF("**** %s command %02x not implemented\n", cmd_type_name, cmd);
     chip_reset_state(chip);
 }
 
+static void on_rom_command(chip_desc_t *chip, uint8_t cmd) {
+    on_command_word(chip, cmd, "rom", ST_WAIT_CMD);
+    chip->rom_command = cmd;
+}
 
+static void on_func_command(chip_desc_t *chip, uint8_t cmd) {
+    on_command_word(chip, cmd, "func", ST_WAIT_FN_CMD);
+}
+
+
+static void set_next_state_based_on_power_mode(chip_desc_t *chip) {
+    if (chip->powered) {
+        chip->sig_mode = ST_SIG_BIT_MODE;
+        chip->state = ST_EXEC_CMD;
+        chip->cmd_ctx.state = ST_MASTER_RD_BIT_BIT_WRITTEN;
+        chip->cmd_ctx.cmd_sm = sm_wr_bit;
+        chip->bit_ndx = 0;
+        chip->byte_ndx = 0;
+        chip->buffer[0] = chip->powered;
+        ds_func_cmd_prime_next_bit(chip);
+    } else {
+        chip_reset_state(chip);
+    }
+}
 
 // master is searching for us. we need to report our id
 // we're expecting master to initiate read bit
 static void on_ow_search(chip_desc_t *chip) {
     DEBUGF("on_ow_search\n");
     memcpy(chip->buffer, chip->serial_no, SERIAL_LEN);
-    DEBUGF("on_ow_search %s\n", debugBinStr((char *)chip->serial_no, SERIAL_LEN));
-    DEBUGF("on_ow_search b1 %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
     chip->sig_mode = ST_SIG_BIT_MODE;
     chip->cmd_ctx.state = ST_MASTER_SEARCH_WRITE_BIT;
     chip->cmd_ctx.cmd_sm = sm_search;
-    DEBUGF("on_ow_search b2 %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    DEBUGF("on_ow_search b2a %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
-    chip->cur_bit = CUR_BIT(chip);
-    DEBUGF("on_ow_search b2b %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
-    // chip->resp_len = SERIAL_LEN;
-    DEBUGF("on_ow_search %s\n", debugBinStr((char *)chip->serial_no, SERIAL_LEN));
-    DEBUGF("on_ow_search b3 %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
 
     ds_func_cmd_prime_next_bit(chip);
     DEBUGF("on_ow_search started with %s\n", debugBinStr((char *)chip->buffer, SERIAL_LEN));
@@ -897,8 +944,6 @@ static void on_ow_match(chip_desc_t *chip) {
     chip->cmd_ctx.cmd_sm = sm_match;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    chip->cur_bit = CUR_BIT(chip);
-    // chip->resp_len = SERIAL_LEN;
 
     match_start_prime_next_bit(chip);
     DEBUGF("on_ow_match started\n");
@@ -909,37 +954,67 @@ static void on_ow_skip(chip_desc_t *chip) {
     chip_ready_for_next_func_cmd(chip);
 }
 
-static void on_ow_alarm_seach(chip_desc_t *chip) {
-
+static void on_ow_alarm_search(chip_desc_t *chip) {
+    DEBUGF("on_ow_alarm_search\n");
+    on_ow_search(chip);
 }
 
 static void on_ds_convert(chip_desc_t *chip) {
+    DEBUGF("on_ds_convert: scratch pad - : %s\n", debugHexStr(chip->scratch_pad, 9));
+    int16_t tv;
+    int16_t tv_frac;
 
-    // write our temp into the scratch pad. Assume we're in parasitic mode for now
-    chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = (chip->temperature >> 8) & 0xFF;
-    chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = (chip->temperature) & 0xFF;
+    // write our temp into the scratch pad, depending on family code. 
+    switch (chip->serial_no[0]) {
+        case DS_FC_18S20:
+            tv = (int16_t)round(chip->temperature);
+            tv_frac = 12 + 16 *(tv - chip->temperature);
+            DEBUGF("on_ds_convert: DS_FC_18S20 temperature - chip: %f tv: %02x h7: %02x f: %02x\n", chip->temperature, tv, ((tv & 0x7F) << 1), tv_frac);
+            chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = tv < 0 ? 0xFF : 0;   // if any sign bit is on, value is 0xFF
+            chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = ((tv & 0x7F) << 1) | ((tv_frac & 0x8) ? 1 : 0);  
+            chip->scratch_pad[CHIP_SP_REMAIN_CNT_OFF] = tv_frac;   // update REMAIN_CNT (use 3 or 4 bits?)
+            break;
+
+        case DS_FC_18B20:
+        default: {
+            // the configuration register determines how many significant bits we're using for conversion
+            tv = (16 * chip->temperature);
+            tv_frac =  tv & 0xF;
+            uint16_t mask = 0xFFF0 | (0xF0 >>  (1 + ((chip->scratch_pad[CHIP_SP_CFG_REG_OFF] & CHIP_CFG_TEMP_BITS_MASK) >> CHIP_CFG_TEMP_BITS_OFF)));
+            DEBUGF("on_ds_convert: DS_FC_18B20 temperature - chip: %f tv: %04x, mask:%04x, f: %x\n", chip->temperature, tv, mask, tv_frac);
+            chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = (tv < 0 ? 0xF8 : 0 ) | ((abs(tv) >> 8) & 0x7);
+            chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = (abs(tv) & 0xF0) | (tv_frac & mask);
+        }
+    }
+
+    // set alarm flag as needed. Since threshold registers are only 7b + S, shift right to remove fractional temp
+    char t = (char)chip->temperature;
+    chip->alarm = (t > ((char)chip->scratch_pad[CHIP_SP_USER_BYTE_1_OFF]) || t < ((char)chip->scratch_pad[CHIP_SP_USER_BYTE_2_OFF]));
+    DEBUGF("on_ds_convert: Setting alarm - : t: %d High %d %02x, Low: %d %02x: %d %s\n", t,
+        (char)(chip->scratch_pad[CHIP_SP_USER_BYTE_1_OFF]), (chip->scratch_pad[CHIP_SP_USER_BYTE_1_OFF]), 
+        (char)(chip->scratch_pad[CHIP_SP_USER_BYTE_2_OFF]), (chip->scratch_pad[CHIP_SP_USER_BYTE_2_OFF]), 
+    chip->alarm, chip->alarm ? "yes" : "no");
 
     update_crc8(chip);
-
-    chip_reset_state(chip);
-
+    set_next_state_based_on_power_mode(chip);
+    DEBUGF("on_ds_convert: scratch pad - : %s\n", debugHexStr(chip->scratch_pad, 9));
 }
 
 static void on_ds_write_scratchpad(chip_desc_t *chip) {
-    DEBUGF("on_ds_write_scratchpad\n");
+    DEBUGF("on_ds_write_scratchpad: %s\n", debugHexStr(chip->scratch_pad, 9));
     chip->state = ST_EXEC_CMD;
     chip->cmd_ctx.state = ST_MASTER_WR_SP_BYTE_READ;
     chip->cmd_ctx.cmd_sm = sm_wr_sp;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    // chip->resp_len = SERIAL_LEN;
 
     ow_ctx_set_master_write_state(chip->ow_ctx, false);
     ow_read_byte_ctx_reset_state(chip->ow_read_byte_ctx);
 }
 
 static void on_ds_read_scratchpad(chip_desc_t *chip) {
-    DEBUGF("on_ds_read_scratchpad\n");
+    DEBUGF("on_ds_read_scratchpad: %s\n", debugHexStr(chip->scratch_pad, 9));
+
     memcpy(chip->buffer, chip->scratch_pad, SCRATCH_LEN);
     chip->state = ST_EXEC_CMD;
     chip->cmd_ctx.state = ST_MASTER_RD_BYTE_BYTE_WRITTEN;
@@ -948,11 +1023,7 @@ static void on_ds_read_scratchpad(chip_desc_t *chip) {
     chip->cmd_ctx.cmd_data.rd_byte_ctx.resp_len = SCRATCH_LEN;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    // chip->resp_len = SERIAL_LEN;
 
-    for (int i = 0; i<SCRATCH_LEN; i++) {
-        DEBUGF("on_ds_read_scratchpad: byte %d: %02x\n", i, chip->buffer[i]);
-    }
     on_master_rd_byte_prime_next_byte(chip, 0);
 }
 
@@ -960,32 +1031,39 @@ static void on_ds_copy_scratchpad(chip_desc_t *chip) {
     // write our temp into the scratch pad. Assume we're in parasitic mode for now
     chip->eeprom[CHIP_EE_TEMP_HI_OFF] = chip->scratch_pad[CHIP_SP_TEMP_HI_OFF];
     chip->eeprom[CHIP_EE_TEMP_LOW_OFF] = chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF];
-    chip->eeprom[CHIP_EE_CFG_REG_OFF] = chip->scratch_pad[CHIP_SP_CFG_REG_OFF];
 
-    // todo(bonnyr): if power mode is powered we need to write '1' to master. For now assume parasite power
+    switch (chip->serial_no[0]) {
+        case DS_FC_18S20:
+            break;
 
-    chip_reset_state(chip);
+        case DS_FC_18B20:
+        default: {
+            chip->eeprom[CHIP_EE_CFG_REG_OFF] = chip->scratch_pad[CHIP_SP_CFG_REG_OFF];
+        }
+    }
+
+    set_next_state_based_on_power_mode(chip);
+    DEBUGF("on_ds_copy_scratchpad: *** finished, starting next cycle, scratchpad: %s\n", debugHexStr(chip->scratch_pad, 9));
 }
 
 static void on_ds_recall(chip_desc_t *chip) {
     DEBUGF("on_ds_recall\n");
     chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = chip->eeprom[CHIP_EE_TEMP_HI_OFF];
     chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = chip->eeprom[CHIP_EE_TEMP_LOW_OFF];
-    chip->scratch_pad[CHIP_SP_CFG_REG_OFF] = chip->eeprom[CHIP_EE_CFG_REG_OFF];
+
+    switch (chip->serial_no[0]) {
+        case DS_FC_18S20:
+            break;
+
+        case DS_FC_18B20:
+        default: {
+            chip->scratch_pad[CHIP_SP_CFG_REG_OFF] = chip->eeprom[CHIP_EE_CFG_REG_OFF];
+        }
+    }
 
     update_crc8(chip);
-
-    chip->sig_mode = ST_SIG_BIT_MODE;
-    chip->state = ST_EXEC_CMD;
-    chip->cmd_ctx.state = ST_MASTER_RD_BIT_BIT_WRITTEN;
-    chip->cmd_ctx.cmd_sm = sm_wr_bit;
-    chip->bit_ndx = 0;
-    chip->byte_ndx = 0;
-    chip->buffer[0] = 0x01; // only write 1 bit of '1'
-
-    ds_func_cmd_prime_next_bit(chip);
-    DEBUGF("on_ds_recall started\n");
-
+    set_next_state_based_on_power_mode(chip);
+    DEBUGF("on_ds_recall started: scratchpad: %s\n", debugHexStr(chip->scratch_pad, 9));
 }
 
 static void on_ds_read_power(chip_desc_t *chip) {
@@ -995,8 +1073,8 @@ static void on_ds_read_power(chip_desc_t *chip) {
     chip->cmd_ctx.cmd_sm = sm_wr_bit;
     chip->bit_ndx = 0;
     chip->byte_ndx = 0;
-    chip->buffer[0] = 0x00; // indicate we're running on parasite power
+    chip->buffer[0] = chip->powered;
 
     ds_func_cmd_prime_next_bit(chip);
-    DEBUGF("on_ds_read_power\n");
+    DEBUGF("on_ds_read_power: scratchpad: %s\n", debugHexStr(chip->scratch_pad, 9));
 }

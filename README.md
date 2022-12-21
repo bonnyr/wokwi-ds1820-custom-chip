@@ -1,9 +1,12 @@
 # wokwi-ds1820-custom-chip
 <img src="ds18b20.jpg" width="100" height="100"/>
 
-[chip data sheet](https://datasheets.maximintegrated.com/en/ds/DS18B20.pdf)
+- [DS18B20 chip data sheet](https://www.analog.com/media/en/technical-documentation/data-sheets/ds18b20.pdf)
+- [DS18S20 chip data sheet](https://www.analog.com/media/en/technical-documentation/data-sheets/ds18s20.pdf)
 
-The DS18B20 Custom Chip simulates the Dallas Semi (Maxim Integrated) One Wire Temperature Sensor of the same name. 
+The DS18B20 Custom Chip simulates the Dallas Semi (Maxim Integrated) One Wire Temperature Sensor of the same names. 
+
+Currenly supported are he DS18B20 and DS18S20.
 
 The chip has the following pin groups
 
@@ -16,10 +19,11 @@ The chip has the following pin groups
 
 ### Addressing
 The device uses OneWire compatible addresses, configurable as described below
+
 ### OneWire Comms 
 The device uses OneWire for comms with the MCU. This custom chip implements a OneWire Slave (only)
 
-A good Arduino library to use on the Arduino side is the OneWire Server Library (TBD)
+A good Arduino library to use on the Arduino side is the OneWire and the Dallas Temperature Libraries (TBD)
 
 
 ## Implementation details
@@ -40,7 +44,8 @@ The device performs a match to the address sent by the master.
 The device skips to wait for function command.
 
 ### Alarm Search
-TBD: not implemented yet.
+If the last temperature conversion resulted in a temperature outside the range specified using Th and Tl, the device 
+will respond with its address. Otherwise, only the first bit is transmitted.
 
 ### Convert
 The device stores the temperature that is configured through `diagram.json` into the scratch pad.
@@ -52,10 +57,10 @@ The device writes the Th, Tl and Cfg bytes into the scratch pad.
 The device transmits the contents of the scratch pad (9 bytes) to the master
 
 ### Copy Scratchpad
-The device copies the contents of the Th, Tl and Cfg bytes from the scratchpad to its eeprom
+The device copies the contents of the Th, Tl (and Cfg for DS18B20) bytes from the scratchpad to its eeprom
 
 ### Recall 
-The device copies the contents of the Th, Tl and Cfg bytes from its eeprom to the scratchpad
+The device copies the contents of the Th, Tl (and Cfg for DS18B20) bytes from its eeprom to the scratchpad
 
 ### Read Power Supply
 The device behavior depends on the value of `deviceMode` attribute [see below](#devicemode)
@@ -67,11 +72,11 @@ The chip defines a number of attributes that alter the behavior of the  operatio
 
 | Name         | Description                                            | Default value             |
 | ------------ | ------------------------------------------------------ | ------------------------- |
-| <span id="owDebug">ow_debug</span>   |  controls debug output for base one wire link layer code | "0"                 |
-| <span id="genDebug">gen_debug</span>   |  controls debug output for the chip code | "0"                 |
-| <span id="deviceMode">deviceMode</span>   |  controls whether the device behaves as if it was connected to Vdd or uses parasitic voltage | "0"                 |
-| <span id="deviceID">deviceID</span>   |  Specifies the unique 48bit device serial number. This is a string and the value should be limited to precisely 12hex digits<br>Note the device serial's CRC is calculated during init | "010203040506"                 |
-| <span id="familyCode">familyCode</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28` | "`0x10`"                 |
+| <span id="owDebug">`ow_debug`</span>   |  controls debug output for base one wire link layer code | `"0"`                 |
+| <span id="genDebug">`gen_debug`</span>   |  controls debug output for the chip code | `"0"`                 |
+| <span id="deviceID">`deviceID`</span>   |  Specifies the unique 48bit device serial number. This is a string and the value should be limited to precisely 12hex digits<br>Note the device serial's CRC is calculated during init | `"010203040506"`                 |
+| <span id="familyCode">`familyCode`</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28` | `"0x10"`                 |
+| <span id="temperature">`temperature`</span>   |  Specifies the reported temperature. Float attribute should be in the range -55 .. 125 | `"0"` |
 
 ## Simulator examples
 
@@ -79,13 +84,12 @@ The chip defines a number of attributes that alter the behavior of the  operatio
 
 ##  Limitations and ommissions
 
-### Power Mode
-power mode is currently fixed at parasitic
-
 ### Convert Temperature in Parasitic mode
 In this mode, the master is pulling the bus high for a period of at least 10us during which no activity 
 takes place on the bus. The current implementation completes the conversion immediately and is going back 
 to the init sequence. This is likely not an issue, but it deviates from the spec somewhat
 
-### Read Power Mode
-Currently we're ignoring the power mode configuration attribute and assume parasitic mode
+### Operations in powered mode
+If the chip is powered (Vdd is high), the current behaviour is to report, when needed (for example when converting/copying scratch or recalling it)
+that we've completed the operation after 1 bit is transmitted (always '1'). This is likely not representative of real devices who may take 
+some time and perhaps will be implemented at some point later...

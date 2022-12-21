@@ -111,8 +111,6 @@ sm_entry_t sm_sig_entries[] = { //[ST_RESET_MAX][EV_MAX]
 
 sm_cfg_t sm_sig_cfg = {
         .name = "sm_sig",
-        .max_states = ST_SIG_MAX,
-        .max_events = EV_MAX,
         .sm_entries = sm_sig_entries,
         .num_entries = sizeof(sm_sig_entries)/sizeof(sm_entry_t),
 };
@@ -214,8 +212,6 @@ static void on_pin_change(void *data, pin_t pin, uint32_t value) {
     ctx->reset_timer_expired = false;
     timer_stop(ctx->reset_detection_timer);
     if (value == LOW) {
-    //     timer_stop(ctx->reset_detection_timer);
-    // } else {
         OW_DEBUGF("%08lld on_pin_change, starting reset detection timer\n", get_sim_nanos());
         timer_start(ctx->reset_detection_timer, PR_DUR_FORCED_RESET, false);
     }
