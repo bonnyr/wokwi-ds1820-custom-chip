@@ -46,7 +46,7 @@
 //   pull    dur     rls  rls-time  pull  pull-time      rls         ready
 //
 #define PR_DUR_RESET 480                    // initial MASTER reset duration
-#define PR_DUR_FORCED_RESET 485             // forced reset (pin held low for at least this duration)
+#define PR_DUR_FORCED_RESET 475             // forced reset (pin held low for at least this duration)
 #define PR_DUR_RESET_MASTER_RELEASE 30      // SLAVE needs to wait between 15-60us for bus to be released/stabilised
 #define PR_DUR_RESET_PULL_PRESENCE 120      // slv pull-time above
 #define PR_DUR_RESET_SLOT_END  329          // time to slv-ready (1us before nominal end of reset cycle)
@@ -181,6 +181,10 @@ typedef struct ow_ctx {
     sm_t *cur_sm;
 
     bool ow_debug;
+
+    // configurable timing vars
+    uint32_t presence_wait_time;
+    uint32_t presence_time;
 } ow_ctx_t;
 
 typedef struct {
@@ -224,8 +228,6 @@ typedef struct sm_entry {
 
 typedef struct sm_cfg {
     const char *name;
-    int max_states;
-    int max_events;
     sm_entry_t *sm_entries;
     int num_entries;
 } sm_cfg_t;
