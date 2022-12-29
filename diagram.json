@@ -4,7 +4,7 @@
   "editor": "wokwi",
   "parts": [
     { "type": "wokwi-arduino-uno", "id": "mega", "top": 0, "left": 0, "attrs": {} },
-    { "type": "chip-ds18b20", "id": "chip", "top": -104, "left": 181.34, "attrs": { "gen_debug": "1", "device_id": "9F9D876799C4F707", "ow_debug": "1", "temperature":"423" } },
+    { "type": "chip-ds18b20", "id": "chip", "top": -104, "left": 181.34, "attrs": { "gen_debug": "0", "device_id": "010203040506", "ow_debug": "0", "temperature":"25.9375", "family_code": "16", "min_temp": "10", "max_temp": "20", "temp_wave_form": "triangle", "temp_wave_freq": "0.0156"} },
     { "type": "wokwi-led", "id": "led", "top": -104, "left": 181.34, "attrs": { } },
     { "type": "wokwi-logic-analyzer", "id": "logic1", "top": -248.9, "left": 25.41, "attrs": {"triggerMode":"level", "triggerPin":"D7", "triggerLevel":"high"} }
   ],
