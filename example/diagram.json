@@ -18,5 +18,5 @@
     [ "logic1:GND", "mega:GND.3", "black", [ "h-45.18", "v401.98", "h203.52" ] ],
     [ "logic1:D7", "mega:2", "green", [ "h212.97", "v173.86" ] ]
   ],
-  "dependencies": { "chip-ds18b20": "github:bonnyr/wokwi-ds1820-custom-chip@0.3.0" }
+  "dependencies": { "chip-ds18b20": "github:bonnyr/wokwi-ds1820-custom-chip@0.4.0" }
 }
