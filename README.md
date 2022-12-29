@@ -6,7 +6,7 @@
 
 The DS18B20 Custom Chip simulates the Dallas Semi (Maxim Integrated) One Wire Temperature Sensor of the same names. 
 
-Currenly supported are he DS18B20 and DS18S20.
+Currenly supported are the DS18B20 and DS18S20 chips.
 
 The chip has the following pin groups
 
@@ -66,6 +66,22 @@ The device copies the contents of the Th, Tl (and Cfg for DS18B20) bytes from it
 The device behavior depends on the value of `deviceMode` attribute [see below](#devicemode)
 When configured in Parasitic mode, the chip will pull down the wire when requested to indicate as much. When configured in Vdd mode, the chip will leave the wire floating.
 
+## Simulation behaviour
+Since the implementation is intended to be used together with wokwi,
+a simulation environment, the chip supports automatically changing 
+the reported temperature according to a wave form at a particular 
+frequency. 
+
+The implemented frequency range is 0.0001 - 100 Hz.
+There are four supported wave forms - Fixed, Sine, Square, Triangle. 
+
+By default Fixed is used and the temperature is fixed; in this case
+the value of the `temperature` attribute determines the reported 
+temperature. If the wave form is one of other available forms 
+and the frequency is within the range, the temperature will vary
+between the values of the attributes `min_temp` and `max_temp` 
+at the frequency specified by the `temp_wave_freq` attribute.
+
 
 ## Attributes
 The chip defines a number of attributes that alter the behavior of the  operation when used in Wokwi. 
@@ -74,9 +90,13 @@ The chip defines a number of attributes that alter the behavior of the  operatio
 | ------------ | ------------------------------------------------------ | ------------------------- |
 | <span id="owDebug">`ow_debug`</span>   |  controls debug output for base one wire link layer code | `"0"`                 |
 | <span id="genDebug">`gen_debug`</span>   |  controls debug output for the chip code | `"0"`                 |
-| <span id="deviceID">`deviceID`</span>   |  Specifies the unique 48bit device serial number. This is a string and the value should be limited to precisely 12hex digits<br>Note the device serial's CRC is calculated during init | `"010203040506"`                 |
-| <span id="familyCode">`familyCode`</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28` | `"0x10"`                 |
+| <span id="device_id">`device_id`</span>   |  Specifies the unique 48bit device serial number. This is a string and the value should be limited to precisely 12hex digits<br>Note the device serial's CRC is calculated during init | `"010203040506"`                 |
+| <span id="family_code">`family_code`</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28` | `"0x10"`                 |
 | <span id="temperature">`temperature`</span>   |  Specifies the reported temperature. Float attribute should be in the range -55 .. 125 | `"0"` |
+| <span id="min_temp">`min_temp`</span>   |  Specifies the minimum temperature in the range. Float attribute should be in the range -55 .. 125 | `"0"` |
+| <span id="max_temp">`max_temp`</span>   |  Specifies the maximum temperature in the range. Float attribute should be in the range -55 .. 125 | `"0"` |
+| <span id="temp_wave_form">`temp_wave_form`</span>   |  Specifies the temperature wave form. String attribute with the following values:<br><li>`fixed` - fixed temperature value set to the value of the `temperature` attribute<br><li>`sine` - a variable temperature changing using a sine wave form<br><li>`square` - a variable temperature changing using a square wave form<br><li>`triangle` - a variable temperature changing using a triangle wave form | `"fixed"` |
+| <span id="temp_wave_freq">`temp_wave_freq`</span>   |  Specifies the frequency in Hz the temperature changes in. Float attribute should be in the range 0.0001 .. 100.  | `"0"` |
 
 ## Simulator examples
 
