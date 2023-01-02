@@ -77,7 +77,8 @@ There are four supported wave forms - Fixed, Sine, Square, Triangle.
 
 By default Fixed is used and the temperature is fixed; in this case
 the value of the `temperature` attribute determines the reported 
-temperature. If the wave form is one of other available forms 
+temperature. The temperature can be changed during run time by clicking on the element.
+If the wave form is one of other available forms 
 and the frequency is within the range, the temperature will vary
 between the values of the attributes `min_temp` and `max_temp` 
 at the frequency specified by the `temp_wave_freq` attribute.
@@ -95,7 +96,7 @@ The chip defines a number of attributes that alter the behavior of the  operatio
 | <span id="temperature">`temperature`</span>   |  Specifies the reported temperature. Float attribute should be in the range -55 .. 125 | `"0"` |
 | <span id="min_temp">`min_temp`</span>   |  Specifies the minimum temperature in the range. Float attribute should be in the range -55 .. 125 | `"0"` |
 | <span id="max_temp">`max_temp`</span>   |  Specifies the maximum temperature in the range. Float attribute should be in the range -55 .. 125 | `"0"` |
-| <span id="temp_wave_form">`temp_wave_form`</span>   |  Specifies the temperature wave form. String attribute with the following values:<br><li>`fixed` - fixed temperature value set to the value of the `temperature` attribute<br><li>`sine` - a variable temperature changing using a sine wave form<br><li>`square` - a variable temperature changing using a square wave form<br><li>`triangle` - a variable temperature changing using a triangle wave form | `"fixed"` |
+| <span id="temp_wave_form">`temp_wave_form`</span>   |  Specifies the temperature wave form. String attribute with the following values:<br><li>`fixed` - fixed temperature value set to the value of the `temperature` attribute.<li>`sine` - a variable temperature changing using a sine wave form<br><li>`square` - a variable temperature changing using a square wave form<br><li>`triangle` - a variable temperature changing using a triangle wave form | `"fixed"` |
 | <span id="temp_wave_freq">`temp_wave_freq`</span>   |  Specifies the frequency in Hz the temperature changes in. Float attribute should be in the range 0.0001 .. 100.  | `"0"` |
 
 ## Simulator examples

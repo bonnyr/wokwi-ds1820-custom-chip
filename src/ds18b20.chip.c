@@ -206,6 +206,7 @@ typedef struct
 
     // the temperature from config and alarm value based on last conversion
     float temperature;
+    uint8_t temperature_attr; // Allow dynamic reading ot temperature
     bool alarm;
     float min_temp;
     float max_temp;
@@ -446,6 +447,7 @@ void chip_attr_init(chip_desc_t *chip) {
     attr = attr_init("debug_timer", false); chip->debug_timer = attr_read(attr) != 0;
 
     attr = attr_init_float("temperature", 0);
+    chip->temperature_attr = attr; // Store the attribute to allow dynamic reading
     chip->temperature = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
     attr = attr_init_float("min_temp", MIN_TEMPERATURE);
     chip->min_temp = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
@@ -1032,7 +1034,9 @@ static void on_ds_convert(chip_desc_t *chip) {
     DEBUGF("on_ds_convert: scratch pad - : %s\n", debugHexStr(chip->scratch_pad, 9));
     int16_t tv;
     int16_t tv_frac;
-
+    // Allow to set the temperature via GUI
+    if (chip->temp_mode == TW_FIXED) chip->temperature = attr_read_float(chip->temperature_attr);
+    
     // write our temp into the scratch pad, depending on family code. 
     switch (chip->serial_no[0]) {
         case DS_FC_18S20:
