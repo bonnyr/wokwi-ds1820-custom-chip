@@ -9,6 +9,14 @@
     ],
     "controls": [
       {
+        "id": "temperature",
+        "label": "DS18B20 Temperature",
+        "type": "range",
+        "min": -55,
+        "max": 125,
+        "step": 0.125
+      },
+      {
         "id": "ow_debug",
         "label": "OneWire Debug control",
         "type": "boolean",
