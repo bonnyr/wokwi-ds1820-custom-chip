@@ -1,7 +1,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-OneWire oneWire(10);
+OneWire oneWire(4);
 DallasTemperature sensor(&oneWire);
 
 DeviceAddress addr;

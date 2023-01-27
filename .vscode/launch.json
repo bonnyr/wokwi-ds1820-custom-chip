@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Wokwi GDB",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/test/.pio/build/esp32cam/firmware.elf",
+        "cwd": "${workspaceFolder}",
+        "MIMode": "gdb",
+        "miDebuggerPath": "C:\\Users\\bonny\\.platformio\\packages\\toolchain-xtensa-esp32\\bin\\xtensa-esp32-elf-gdb.exe",
+        "miDebuggerServerAddress": "localhost:3333"
+      }
+    ]
+  }

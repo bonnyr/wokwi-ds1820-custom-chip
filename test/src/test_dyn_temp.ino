@@ -7,10 +7,20 @@ extern DeviceAddress addr;
 extern uint8_t scratch[];
 
 void test_dyn_temp_setup(void) {
+
   Serial.begin(115200);
   pinMode(2, OUTPUT);
   pinMode(3, OUTPUT);
   digitalWrite(2, LOW); // change to HIGH to capture signalling info
+
+
+
+
+  Serial.println("Starting Delay");
+  delay(10000);
+  Serial.println("Starting");
+
+
 
   delay(2);
   sensor.begin();

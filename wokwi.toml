@@ -1,7 +1,10 @@
 [wokwi]
 version = 1
-elf = 'test/release/firmware.elf'
-firmware = 'test/release/firmware.hex'
+#elf = 'test/release/firmware.elf'
+#firmware = 'test/release/firmware.hex'
+elf = 'test/.pio/build/esp32cam/firmware.elf'
+firmware = 'test/.pio/build/esp32cam/firmware.bin'
+gdbServerPort=3333
 
 [[chip]]
 name = 'ds18b20'

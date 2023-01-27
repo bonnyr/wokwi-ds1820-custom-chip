@@ -1,21 +1,22 @@
 {
   "version": 1,
-  "author": "Bonny Rais",
+  "author": "Lutzi",
   "editor": "wokwi",
   "parts": [
-    { "type": "wokwi-arduino-uno", "id": "mega", "top": 0, "left": 0, "attrs": {} },
-    { "type": "chip-ds18b20", "id": "chip", "top": -104, "left": 181.34, "attrs": { "gen_debug": "0", "device_id": "010203040506", "ow_debug": "0", "temperature":"25.9375", "family_code": "16", "min_temp": "10", "max_temp": "20", "temp_wave_form": "triangle", "temp_wave_freq": "0.0156"} },
-    { "type": "wokwi-led", "id": "led", "top": -104, "left": 181.34, "attrs": { } },
-    { "type": "wokwi-logic-analyzer", "id": "logic1", "top": -248.9, "left": 25.41, "attrs": {"triggerMode":"level", "triggerPin":"D7", "triggerLevel":"high"} }
+    {
+      "type": "chip-ds18b20",
+      "id": "chip2",
+      "top": -189.03,
+      "left": 224.22,
+      "attrs": { "gen_debug": "1", "device_id": "010203040506", "ow_debug": "1", "temperature": "22" }
+    },
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp1", "top": -132.39, "left": 232.27, "attrs": {} },
+    { "type": "wokwi-logic-analyzer", "id": "logic1", "top": -249.25, "left": 9.6, "attrs": {} }
   ],
   "connections": [
-    [ "chip:VCC", "mega:5V", "red", [ "h116.15", "v336.49", "h-241.58" ] ],
-    [ "chip:GND", "mega:GND.2", "black", [ "h0" ] ],
-    [ "mega:GND.1", "led:C", "black", [ "v0" ] ],
-    [ "mega:3", "led:A", "green", [ "v0" ] ],
-    [ "mega:10", "chip:DQ", "green", [ "v0" ] ],
-    [ "logic1:D0", "chip:DQ", "green", [ "h-15.86", "v144.23" ] ],
-    [ "logic1:GND", "mega:GND.3", "black", [ "h-45.18", "v401.98", "h203.52" ] ],
-    [ "logic1:D7", "mega:2", "green", [ "h212.97", "v173.86" ] ]
+    [ "chip2:GND", "esp1:GND.2", "black", [ "h0.25", "v21.06", "h-7.53", "v166.4" ] ],
+    [ "chip2:VCC", "esp1:3V3", "red", [ "v-0.66", "h36.88", "v197.62" ] ],
+    [ "chip2:DQ", "esp1:D4", "green", [ "h-13.32", "v-18.06", "h139.04", "v202.3" ] ],
+    [ "logic1:D0", "chip2:DQ", "green", [ "h0" ] ]
   ]
 }
