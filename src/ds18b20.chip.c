@@ -21,7 +21,9 @@
 
 // --------------- Debug Macros -----------------------
 #ifdef DEBUG
-#define DEBUGF(...)      { if (chip->gen_debug) {printf("%lld ", get_sim_nanos()/1000); printf(__VA_ARGS__);} }
+#define PR_TS {uint64_t _t = get_sim_nanos(); int i = 28; buf[31] = 0; sprintf(buf+i, "%03d", (int)(_t % 1000)); _t = _t/ 1000; i-=3; while (_t > 0 ) {sprintf(buf + i, ",%d", (int)(_t % 1000)); i -= 4; _t = _t/1000;} puts(buf);} 
+#define DEBUGF(...)      { if (chip->gen_debug) {PR_TS; printf(__VA_ARGS__);} }
+//#define DEBUGF(...)      { if (chip->gen_debug) {printf("%'lld ", get_sim_nanos()/1000); printf(__VA_ARGS__);} }
 char buf[200];
 
 

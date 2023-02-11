@@ -161,7 +161,7 @@ void sm_push_event(sm_t *sm, void *ctx, reset_state reset_fn, uint32_t state, ui
         reset_fn(ctx);
         return;
     } else if (h->handler == on_not_impl) {
-        _DEBUGF(debug, "%08lld (%lld) %s[%s]: %s( %d ) - *** not implemented ***\n", get_sim_nanos(), OW_ELAPSED_US(((ow_ctx_t*)ctx)->reset_time),
+        _DEBUGF(debug, "(%lld) %s[%s]: %s( %d ) - *** not implemented ***\n", OW_ELAPSED_US(((ow_ctx_t*)ctx)->reset_time),
                 h->st_name, h->ev_name, h->name, ev_data);
     } else {
                 _DEBUGF(debug, "%08lld sm_push_event> (%lld) %s (ctx:%p) %s[%s]: %s( %d ) -> %p\n",
@@ -175,7 +175,7 @@ void sm_push_event(sm_t *sm, void *ctx, reset_state reset_fn, uint32_t state, ui
     key = state_event_to_key(((ow_ctx_t*)ctx)->state, event);
     h = hashmap_get((sm_entry_map_t *)sm->hash, &key);
     if (h == NULL) {
-        _DEBUGF(debug, "%08lld sm_push_event< invalid next state\n", get_sim_nanos());
+        _DEBUGF(debug, "sm_push_event< invalid next state\n");
     } else {
         _DEBUGF(debug, "%08lld sm_push_event< %s (ctx: %p) next state=> %s(%d)\n",
                 get_sim_nanos(), sm->cfg->name, ctx, h->st_name, h->state);
@@ -192,7 +192,7 @@ static void on_timer_event(void *data) {
 
 static void on_reset_timer_event(void *data) {
     OW_CTX(data);
-    OW_DEBUGF("%08lld on_reset_timer_event: %d\n", get_sim_nanos(), ctx->reset_detection_timer);
+    OW_DEBUGF("on_reset_timer_event: %d\n", ctx->reset_detection_timer);
 
 
     // if the timer expired, last pin change was pulled low meaning there 
@@ -212,7 +212,7 @@ static void on_pin_change(void *data, pin_t pin, uint32_t value) {
     ctx->reset_timer_expired = false;
     timer_stop(ctx->reset_detection_timer);
     if (value == LOW) {
-        OW_DEBUGF("%08lld on_pin_change, starting reset detection timer\n", get_sim_nanos());
+        OW_DEBUGF("on_pin_change, starting reset detection timer\n");
         timer_start(ctx->reset_detection_timer, PR_DUR_FORCED_RESET, false);
     }
 
@@ -230,7 +230,7 @@ void on_ignored(void *d, uint32_t data) {
 
 static void on_reset_detected(void *d, uint32_t data) {
     OW_CTX(d);
-    OW_DEBUGF("%08lld on_reset_detected: %d\n", get_sim_nanos(), ctx->reset_detection_timer);
+    OW_DEBUGF("on_reset_detected: %d\n", ctx->reset_detection_timer);
 
 
     // reset our and owner's context and then set the state as if we're waiting for the reset 
@@ -284,7 +284,7 @@ ow_ctx_t * ow_ctx_init(ow_ctx_cfg_t *cfg)  {
 
 
     ow_ctx_reset_state(ctx);
-    OW_DEBUGF("%08lld ow_ctx_init\n", get_sim_nanos());
+    OW_DEBUGF("ow_ctx_init\n");
 
     return ctx;
 }

@@ -17,7 +17,7 @@ void test_dyn_temp_setup(void) {
 
 
   Serial.println("Starting Delay");
-  delay(10000);
+  delay(2000);
   Serial.println("Starting");
 
 

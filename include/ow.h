@@ -16,7 +16,9 @@
 // --------------- Debug Macros -----------------------
 #ifdef DEBUG
 #ifndef OW_DEBUGF
-#define _DEBUGF(debug, ...)  { if (debug) {printf(__VA_ARGS__);}  }
+extern char  buf[200];
+#define OW_PR_TS {uint64_t _t = get_sim_nanos(); int i = 28; buf[31] = 0; sprintf(buf+i, "%03d", (int)(_t % 1000)); _t = _t/ 1000; while (_t > 0 ) {i-=3; sprintf(buf + i, ",%3d", (int)(_t % 1000)); i -= 4; _t = _t/1000;} puts(buf+i);} 
+#define _DEBUGF(debug, ...)  { if (debug) {OW_PR_TS; printf(__VA_ARGS__);}  }
 #define OW_DEBUGF(...)  _DEBUGF(ctx->ow_debug, __VA_ARGS__)
 #endif
 #else
