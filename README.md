@@ -12,7 +12,7 @@ The chip has the following pin groups
 
 | Name         | Description                                            |
 | ------------ | ------------------------------------------------------ |
-| `Vdd`   | Power pin          |
+| `VCC`   | Power pin          |
 | `GND`     | ground pin                        |
 | `DQ`      | Data Pin, used as I/O pin           |
 
@@ -64,7 +64,7 @@ The device copies the contents of the Th, Tl (and Cfg for DS18B20) bytes from it
 
 ### Read Power Supply
 The device behavior depends on the value of `deviceMode` attribute [see below](#devicemode)
-When configured in Parasitic mode, the chip will pull down the wire when requested to indicate as much. When configured in Vdd mode, the chip will leave the wire floating.
+When configured in Parasitic mode, the chip will pull down the wire when requested to indicate as much. When configured in VCC mode, the chip will leave the wire floating.
 
 ## Simulation behaviour
 Since the implementation is intended to be used together with wokwi,
@@ -111,6 +111,6 @@ takes place on the bus. The current implementation completes the conversion imme
 to the init sequence. This is likely not an issue, but it deviates from the spec somewhat
 
 ### Operations in powered mode
-If the chip is powered (Vdd is high), the current behaviour is to report, when needed (for example when converting/copying scratch or recalling it)
+If the chip is powered (VCC is high), the current behaviour is to report, when needed (for example when converting/copying scratch or recalling it)
 that we've completed the operation after 1 bit is transmitted (always '1'). This is likely not representative of real devices who may take 
 some time and perhaps will be implemented at some point later...

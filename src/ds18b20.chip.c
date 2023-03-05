@@ -218,7 +218,7 @@ typedef struct
     
 
     // the power pin, used to determine power mode
-    pin_t vdd_pin;
+    pin_t vcc_pin;
     bool powered;
 
     // debug
@@ -534,8 +534,8 @@ void chip_init()
     // initialise command map
     cmd_init_hash();
 
-    chip->vdd_pin = pin_init("Vdd", INPUT);
-    chip->powered = pin_read(chip->vdd_pin);
+    chip->vcc_pin = pin_init("VCC", INPUT);
+    chip->powered = pin_read(chip->vcc_pin);
 
     // initialise temperature timers if needed
     if (chip->temp_mode != TW_FIXED && chip->temp_chg_freq > 0.001) {
