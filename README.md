@@ -92,7 +92,7 @@ The chip defines a number of attributes that alter the behavior of the  operatio
 | <span id="owDebug">`ow_debug`</span>   |  controls debug output for base one wire link layer code | `"0"`                 |
 | <span id="genDebug">`gen_debug`</span>   |  controls debug output for the chip code | `"0"`                 |
 | <span id="device_id">`device_id`</span>   |  Specifies the unique 48bit device serial number. This is a string and the value should be limited to precisely 12hex digits<br>Note the device serial's CRC is calculated during init | `"010203040506"`                 |
-| <span id="family_code">`family_code`</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28` | `"0x10"`                 |
+| <span id="family_code">`family_code`</span>   |  Specifies the device family code. Supported values include `0x10`, `0x22`, `0x28`<br>Note that the values have to be specified as decimal and not hex, so `0x28 -> 40`, `0x10 -> 16` etc. | `"0x10"`                 |
 | <span id="temperature">`temperature`</span>   |  Specifies the reported temperature. Float attribute should be in the range -55 .. 125 | `"0"` |
 | <span id="min_temp">`min_temp`</span>   |  Specifies the minimum temperature in the range. Float attribute should be in the range -55 .. 125 | `"0"` |
 | <span id="max_temp">`max_temp`</span>   |  Specifies the maximum temperature in the range. Float attribute should be in the range -55 .. 125 | `"0"` |
