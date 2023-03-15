@@ -566,13 +566,17 @@ static void chip_reset_state(chip_desc_t *chip) {
     memset(chip->buffer, 0, BUF_LEN);
 
     // setup scratch pad based on family code
-    if (chip->serial_no[0] == DS_FC_18S20) {
-        //see  https://www.analog.com/media/en/technical-documentation/data-sheets/ds18s20.pdf (measuring temp)
-        // chip->scratch_pad[CHIP_SP_REMAIN_CNT_OFF] = 0; 
-        chip->scratch_pad[CHIP_SP_CNT_PER_C_OFF] = 16; 
+    switch (chip->serial_no[0]) {
+        default:
+        case DS_FC_18S20:
+            //see  https://www.analog.com/media/en/technical-documentation/data-sheets/ds18s20.pdf (measuring temp)
+            // chip->scratch_pad[CHIP_SP_REMAIN_CNT_OFF] = 0; 
+            chip->scratch_pad[CHIP_SP_CNT_PER_C_OFF] = 16; 
+
+        case DS_FC_18B20:
+            chip->scratch_pad[CHIP_SP_RSVD_1_OFF] = 0xFF; 
+            chip->scratch_pad[CHIP_SP_RSVD_3_OFF] = 0x10; 
     }
-
-
 }
 
 static void chip_ready_for_next_cmd_byte(chip_desc_t *chip, chip_state_t state, const char *type) {
@@ -1042,7 +1046,7 @@ static void on_ds_convert(chip_desc_t *chip) {
         case DS_FC_18S20:
             tv = (int16_t)round(chip->temperature);
             tv_frac = 12 + 16 *(tv - chip->temperature);
-            DEBUGF("on_ds_convert: DS_FC_18S20 temperature - chip: %f tv: %02x h7: %02x f: %02x\n", chip->temperature, tv, ((tv & 0x7F) << 1), tv_frac);
+            DEBUGF("on_ds_convert: DS_FC_18S20 temperature - chip: %f tv: %02x(%d) h7: %02x f: %02x\n", chip->temperature, tv, tv, ((tv & 0x7F) << 1), tv_frac);
             chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = tv < 0 ? 0xFF : 0;   // if any sign bit is on, value is 0xFF
             chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = ((tv & 0x7F) << 1) | ((tv_frac & 0x8) ? 1 : 0);  
             chip->scratch_pad[CHIP_SP_REMAIN_CNT_OFF] = tv_frac;   // update REMAIN_CNT (use 3 or 4 bits?)
@@ -1054,9 +1058,9 @@ static void on_ds_convert(chip_desc_t *chip) {
             tv = (16 * chip->temperature);
             tv_frac =  tv & 0xF;
             uint16_t mask = 0xFFF0 | (0xF0 >>  (1 + ((chip->scratch_pad[CHIP_SP_CFG_REG_OFF] & CHIP_CFG_TEMP_BITS_MASK) >> CHIP_CFG_TEMP_BITS_OFF)));
-            DEBUGF("on_ds_convert: DS_FC_18B20 temperature - chip: %f tv: %04x, mask:%04x, f: %x\n", chip->temperature, tv, mask, tv_frac);
-            chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = (tv < 0 ? 0xF8 : 0 ) | ((abs(tv) >> 8) & 0x7);
-            chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = (abs(tv) & 0xF0) | (tv_frac & mask);
+            DEBUGF("on_ds_convert: DS_FC_18B20 temperature - chip: %f tv: %02X, mask:%04x, frac: %x, tv >> 12: %X\n", chip->temperature, tv, mask, tv_frac, tv >> 8);
+            chip->scratch_pad[CHIP_SP_TEMP_HI_OFF] = tv >> 8;
+            chip->scratch_pad[CHIP_SP_TEMP_LOW_OFF] = tv & 0xFF & mask;
         }
     }
 
