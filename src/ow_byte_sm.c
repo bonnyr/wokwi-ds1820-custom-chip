@@ -68,7 +68,7 @@ void ow_read_byte_bit_written_cb(void *d, uint32_t err, uint32_t data) {
     // update state first
     ctx->state = ST_READ_RUNNING;
 
-    sm_push_event(sm_read_byte, ctx, ctx->reset_fn, ctx->state, EV_BIT_WRITTEN, data, ctx->ow_debug);
+    sm_push_event(sm_read_byte, ctx, ctx->reset_fn, ctx->state, EV_BIT_WRITTEN, data, ctx->owDebug);
 }
 
 
@@ -84,8 +84,8 @@ ow_byte_ctx_t *ow_read_byte_ctx_init(void *data, byte_cb cb, ow_ctx_t *ow_ctx) {
 
     uint32_t attr;
 
-    attr = attr_init("ow_debug", false);
-    ctx->ow_debug = attr_read(attr) != 0;
+    attr = attr_init("owDebug", false);
+    ctx->owDebug = attr_read(attr) != 0;
     return ctx;
 }
 void ow_read_byte_ctx_reset_state(ow_byte_ctx_t *ctx) {
@@ -126,7 +126,7 @@ void ow_write_byte_bit_read_cb(void *d, uint32_t err, uint32_t data) {
     // update state first
     ctx->state = ST_WRITE_RUNNING;
 
-    sm_push_event(sm_write_byte, ctx, ctx->reset_fn, ctx->state, EV_BIT_READ, data, ctx->ow_debug);
+    sm_push_event(sm_write_byte, ctx, ctx->reset_fn, ctx->state, EV_BIT_READ, data, ctx->owDebug);
 }
 
 static void ow_write_byte_reset_cb(void *ctx) { ow_write_byte_ctx_reset_state((ow_byte_ctx_t *) ctx, 0);}
@@ -141,8 +141,8 @@ ow_byte_ctx_t *ow_write_byte_ctx_init(void *data, byte_cb cb, ow_ctx_t *ow_ctx) 
 
     uint32_t attr;
 
-    attr = attr_init("ow_debug", false);
-    ctx->ow_debug = attr_read(attr) != 0;
+    attr = attr_init("owDebug", false);
+    ctx->owDebug = attr_read(attr) != 0;
     return ctx;
 }
 
