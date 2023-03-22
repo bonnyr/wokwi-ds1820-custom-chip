@@ -187,7 +187,7 @@ void sm_push_event(sm_t *sm, void *ctx, reset_state reset_fn, uint32_t state, ui
 static void on_timer_event(void *data) {
     OW_CTX(data);
     sm_push_event(sm_sig, data, ctx->reset_fn, ctx->state, EV_TIMER_EXPIRED, 0,
-                  ctx->ow_debug);
+                  ctx->owDebug);
 }
 
 static void on_reset_timer_event(void *data) {
@@ -198,7 +198,7 @@ static void on_reset_timer_event(void *data) {
     // if the timer expired, last pin change was pulled low meaning there 
     // was no other bus event and the master decided to reset us
     // for now, record this and allow sm to handle this fact
-    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_RESET_TIMER_EXPIRED, 0, ctx->ow_debug);
+    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_RESET_TIMER_EXPIRED, 0, ctx->owDebug);
 }
 
 static void on_pin_change(void *data, pin_t pin, uint32_t value) {
@@ -216,7 +216,7 @@ static void on_pin_change(void *data, pin_t pin, uint32_t value) {
         timer_start(ctx->reset_detection_timer, PR_DUR_FORCED_RESET, false);
     }
 
-    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_PIN_CHG, value, ctx->ow_debug);
+    sm_push_event(sm_sig, ctx, ((ow_ctx_t *) data)->reset_fn, ((ow_ctx_t *) data)->state, EV_PIN_CHG, value, ctx->owDebug);
 }
 
 void on_not_impl(void *ctx, uint32_t data) {
@@ -274,8 +274,8 @@ ow_ctx_t * ow_ctx_init(ow_ctx_cfg_t *cfg)  {
     // read config attributes
     uint32_t attr;
 
-    attr = attr_init("ow_debug", false);
-    ctx->ow_debug = attr_read(attr) != 0;
+    attr = attr_init("owDebug", false);
+    ctx->owDebug = attr_read(attr) != 0;
 
 //    attr = attr_init("presence_wait_time", PR_DUR_WAIT_PRESENCE);
 //    ctx->presence_wait_time = attr_read(attr);

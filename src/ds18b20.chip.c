@@ -21,7 +21,7 @@
 
 // --------------- Debug Macros -----------------------
 #ifdef DEBUG
-#define DEBUGF(...)      { if (chip->gen_debug) {printf("%lld ", get_sim_nanos()/1000); printf(__VA_ARGS__);} }
+#define DEBUGF(...)      { if (chip->genDebug) {printf("%lld ", get_sim_nanos()/1000); printf(__VA_ARGS__);} }
 char buf[200];
 
 
@@ -208,8 +208,8 @@ typedef struct
     float temperature;
     uint8_t temperature_attr; // Allow dynamic reading ot temperature
     bool alarm;
-    float min_temp;
-    float max_temp;
+    float minTemp;
+    float maxTemp;
     float temp_chg_freq;
     timer_t temp_wave_timer;
     wave_mode_t temp_mode;
@@ -223,8 +223,8 @@ typedef struct
 
     // debug
     bool debug_timer;
-    bool ow_debug;
-    bool gen_debug;
+    bool owDebug;
+    bool genDebug;
 
 } chip_desc_t;
 
@@ -368,7 +368,7 @@ static sm_cfg_t sm_wr_bit_cfg = {
 static sm_t *sm_wr_bit = &(sm_t){.cfg = &sm_wr_bit_cfg};
 
 
-static uint8_t supported_family_codes[] = { 
+static uint8_t supported_familyCodes[] = { 
     DS_FC_18S20, DS_FC_18B20//, DS_FC_1822
 };
 
@@ -442,20 +442,20 @@ void chip_attr_init(chip_desc_t *chip) {
     uint32_t len;
     char str_attr[SERIAL_LEN * 2];
     
-    attr = attr_init("ow_debug", false); chip->ow_debug = attr_read(attr) != 0;
-    attr = attr_init("gen_debug", false); chip->gen_debug = attr_read(attr) != 0;
+    attr = attr_init("owDebug", false); chip->owDebug = attr_read(attr) != 0;
+    attr = attr_init("genDebug", false); chip->genDebug = attr_read(attr) != 0;
     attr = attr_init("debug_timer", false); chip->debug_timer = attr_read(attr) != 0;
 
     attr = attr_init_float("temperature", 0);
     chip->temperature_attr = attr; // Store the attribute to allow dynamic reading
     chip->temperature = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
-    attr = attr_init_float("min_temp", MIN_TEMPERATURE);
-    chip->min_temp = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
-    attr = attr_init_float("max_temp", MAX_TEMPERATURE);
-    chip->max_temp = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
-    attr = attr_init_float("temp_wave_freq", 0);
+    attr = attr_init_float("minTemp", MIN_TEMPERATURE);
+    chip->minTemp = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
+    attr = attr_init_float("maxTemp", MAX_TEMPERATURE);
+    chip->maxTemp = constrain(attr_read_float(attr), MIN_TEMPERATURE, MAX_TEMPERATURE);
+    attr = attr_init_float("tempWaveFreq", 0);
     chip->temp_chg_freq = constrain(attr_read_float(attr), 0, 100);
-    attr = attr_string_init("temp_wave_form");
+    attr = attr_string_init("tempWaveForm");
     len = string_read(attr, str_attr, 8 + 1 );  // allowing for none|sine|square|triangle 8 + NULL
     printf("reading temp mode: %s\n", str_attr);
     for(int i = 0; str_attr[i]; i++){ str_attr[i] = tolower(str_attr[i]); }
@@ -464,19 +464,19 @@ void chip_attr_init(chip_desc_t *chip) {
     if (!strcmp(str_attr, "square")) chip->temp_mode = TW_SQUARE;
     if (!strcmp(str_attr, "triangle")) chip->temp_mode = TW_TRIANGLE;
 
-    if (chip->min_temp > chip->max_temp) {
-        float t = chip->min_temp;
-        chip->min_temp = chip->max_temp;
-        chip->max_temp = t;
+    if (chip->minTemp > chip->maxTemp) {
+        float t = chip->minTemp;
+        chip->minTemp = chip->maxTemp;
+        chip->maxTemp = t;
     }
 
     // initialise device id
-    attr = attr_init("family_code", DS_FC_18S20); chip->serial_no[0] = attr_read(attr) & 0xFF;
-    if (memchr(supported_family_codes, chip->serial_no[0], sizeof(supported_family_codes)) == NULL) {
+    attr = attr_init("familyCode", DS_FC_18S20); chip->serial_no[0] = attr_read(attr) & 0xFF;
+    if (memchr(supported_familyCodes, chip->serial_no[0], sizeof(supported_familyCodes)) == NULL) {
         printf("*** DS18B20 device family code not supported (%d), expect errors...\n", chip->serial_no[0]);
     }
 
-    attr = attr_string_init("device_id"); 
+    attr = attr_string_init("deviceID"); 
     len = string_read(attr, str_attr, 13 );  // expecting 12 Hex Digits + NULL
     if (len < 12) {
         printf("*** DS18B20 device id too short (%d), expect errors...\n", len);
@@ -496,12 +496,12 @@ void chip_attr_init(chip_desc_t *chip) {
 //    attr = attr_init("presence_time", PR_DUR_PULL_PRESENCE);
 //    chip->presence_time = attr_read(attr);
 
-    printf("*** DS18B20 setting attributes:\n  gen_debug: %d\n  ow_debug: %d\n  temperature: %f\n  family_code: %2x\n"
-           "  min_temp: %f\n  max_temp: %f\n  temp_freq: %f\n  temp_mode: %d\n", 
-    chip->gen_debug, chip->ow_debug, chip->temperature, chip->serial_no[0],
-    chip->min_temp, chip->max_temp, chip->temp_chg_freq, chip->temp_mode);
+    printf("*** DS18B20 setting attributes:\n  genDebug: %d\n  owDebug: %d\n  temperature: %f\n  familyCode: %2x\n"
+           "  minTemp: %f\n  maxTemp: %f\n  temp_freq: %f\n  temp_mode: %d\n", 
+    chip->genDebug, chip->owDebug, chip->temperature, chip->serial_no[0],
+    chip->minTemp, chip->maxTemp, chip->temp_chg_freq, chip->temp_mode);
 
-    printf("  device_id: ");
+    printf("  deviceID: ");
     for (int i = 0; i < SERIAL_LEN; i++ ){
         printf("%02x", chip->serial_no[i]);
     }
@@ -544,7 +544,7 @@ void chip_init()
             .callback = on_timer_event,
         };
 
-        chip->temperature = (chip->max_temp - chip->min_temp) / 2;
+        chip->temperature = (chip->maxTemp - chip->minTemp) / 2;
         chip->temp_wave_timer = timer_init(&timer_cfg);
         timer_start(chip->temp_wave_timer, (1e4 / chip->temp_chg_freq), true);
     }
@@ -635,7 +635,7 @@ void on_timer_event(void *data) {
     chip_desc_t *chip = data;
     int32_t slot  = (chip->temp_wave_slot++) % 100;
     float y = 0;
-    float r = (chip->max_temp - chip->min_temp);
+    float r = (chip->maxTemp - chip->minTemp);
 
     switch(chip->temp_mode) {
         case TW_TRIANGLE: y = (0.04 * abs((((slot - 25 % 100) + 100) % 100) - 50) - 1) / 2 ; break;
@@ -644,7 +644,7 @@ void on_timer_event(void *data) {
         case TW_FIXED: y = 0.5;
     }
 
-    chip->temperature = chip->min_temp + r * ( y + 0.5);
+    chip->temperature = chip->minTemp + r * ( y + 0.5);
 }
 
 void on_forced_reset_cb(void *d, uint32_t err, uint32_t data) {

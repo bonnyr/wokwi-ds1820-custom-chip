@@ -17,7 +17,7 @@
         "step": 0.125
       },
       {
-        "id": "ow_debug",
+        "id": "owDebug",
         "label": "OneWire Debug control",
         "type": "boolean",
         "min": 0,
@@ -25,7 +25,7 @@
         "step": 1
       },
       {
-        "id": "device_id",
+        "id": "deviceID",
         "label": "device serial number",
         "type": "string"
       }

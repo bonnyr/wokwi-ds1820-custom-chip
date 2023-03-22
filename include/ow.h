@@ -17,7 +17,7 @@
 #ifdef DEBUG
 #ifndef OW_DEBUGF
 #define _DEBUGF(debug, ...)  { if (debug) {printf(__VA_ARGS__);}  }
-#define OW_DEBUGF(...)  _DEBUGF(ctx->ow_debug, __VA_ARGS__)
+#define OW_DEBUGF(...)  _DEBUGF(ctx->owDebug, __VA_ARGS__)
 #endif
 #else
 #ifndef OW_DEBUGF
@@ -180,7 +180,7 @@ typedef struct ow_ctx {
 
     sm_t *cur_sm;
 
-    bool ow_debug;
+    bool owDebug;
 
     // configurable timing vars
     uint32_t presence_wait_time;
@@ -209,7 +209,7 @@ typedef struct ow_byte_ctx {
     ow_ctx_t *ow_ctx;       // signalling context
     reset_state reset_fn;   // used by generic sm to reset state on error
 
-    bool ow_debug;
+    bool owDebug;
 } ow_byte_ctx_t;
 
 
